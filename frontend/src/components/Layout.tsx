@@ -1,7 +1,6 @@
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useSystemStatus, useActivityCounts } from '../api/hooks';
 import {
-  HomeIcon,
   FolderIcon,
   ClockIcon,
   Cog6ToothIcon,
@@ -65,6 +64,7 @@ export default function Layout() {
       path: '/leagues',
       children: [
         { label: 'Add League', path: '/add-league/search' },
+        { label: 'Add Team', path: '/add-team/search' },
         { label: 'Library Import', path: '/library-import' },
       ],
     },

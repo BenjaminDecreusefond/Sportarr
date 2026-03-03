@@ -75,26 +75,7 @@ public class ReleaseMatchingService
         @"\btrailer\b",                      // trailer
     };
 
-    // Common team name abbreviations
-    private static readonly Dictionary<string, string[]> TeamAbbreviations = new(StringComparer.OrdinalIgnoreCase)
-    {
-        // NBA
-        { "LAL", new[] { "lakers", "los angeles lakers" } },
-        { "LAC", new[] { "clippers", "los angeles clippers" } },
-        { "BOS", new[] { "celtics", "boston celtics" } },
-        { "GSW", new[] { "warriors", "golden state warriors" } },
-        { "NYK", new[] { "knicks", "new york knicks" } },
-        { "CHI", new[] { "bulls", "chicago bulls" } },
-        { "MIA", new[] { "heat", "miami heat" } },
-        { "PHX", new[] { "suns", "phoenix suns" } },
-        // NFL
-        { "NE", new[] { "patriots", "new england patriots" } },
-        { "KC", new[] { "chiefs", "kansas city chiefs" } },
-        { "SF", new[] { "49ers", "san francisco 49ers", "niners" } },
-        { "DAL", new[] { "cowboys", "dallas cowboys" } },
-        { "GB", new[] { "packers", "green bay packers" } },
-        // Add more as needed
-    };
+    // Team name variations are now in TeamNameVariationData.cs (shared with ReleaseMatchScorer)
 
     public ReleaseMatchingService(
         ILogger<ReleaseMatchingService> logger,
@@ -145,14 +126,22 @@ public class ReleaseMatchingService
         var normalizedRelease = NormalizeTitle(release.Title);
         var normalizedEvent = NormalizeTitle(evt.Title);
 
-        // Also check if release matches any location variations of the event title
-        // This handles cases like "Mexico Grand Prix" matching "Mexico City Grand Prix"
-        var isLocationVariationMatch = SearchNormalizationService.IsReleaseMatch(release.Title, evt.Title);
-        if (isLocationVariationMatch && !normalizedRelease.Contains(normalizedEvent, StringComparison.OrdinalIgnoreCase))
+        // Determine if this is a team sport event using string fields (always available, unlike navigation properties)
+        var isTeamSport = !string.IsNullOrEmpty(evt.HomeTeamName) && !string.IsNullOrEmpty(evt.AwayTeamName);
+
+        // Location variation matching is ONLY useful for non-team sports (F1, UFC, etc.)
+        // where the event title contains location names (e.g., "Mexico Grand Prix" vs "Mexican Grand Prix")
+        // For team sports, city names like "Los Angeles" trigger location aliases ("LA") inappropriately,
+        // which can boost confidence for wrong team matchups
+        if (!isTeamSport)
         {
-            result.Confidence += 15;
-            result.MatchReasons.Add("Location/naming variation match");
-            _logger.LogDebug("[Release Matching] Location variation match: release uses alternate location name");
+            var isLocationVariationMatch = SearchNormalizationService.IsReleaseMatch(release.Title, evt.Title);
+            if (isLocationVariationMatch && !normalizedRelease.Contains(normalizedEvent, StringComparison.OrdinalIgnoreCase))
+            {
+                result.Confidence += 15;
+                result.MatchReasons.Add("Location/naming variation match");
+                _logger.LogDebug("[Release Matching] Location variation match: release uses alternate location name");
+            }
         }
 
         // VALIDATION 1: Event number match (UFC 299, Bellator 300, etc.)
@@ -173,9 +162,12 @@ public class ReleaseMatchingService
         }
 
         // VALIDATION 2: Team names match (for team sports)
-        if (evt.HomeTeam != null && evt.AwayTeam != null)
+        // Uses string fields (HomeTeamName/AwayTeamName) which are always available,
+        // unlike navigation properties (HomeTeam/AwayTeam) which require .Include() and
+        // were missing in RssSyncService — causing team validation to be completely bypassed during RSS sync
+        if (isTeamSport)
         {
-            var teamMatch = ValidateTeamNames(release.Title, evt.HomeTeam, evt.AwayTeam);
+            var teamMatch = ValidateTeamNames(release.Title, evt.HomeTeamName!, evt.AwayTeamName!, evt.HomeTeam, evt.AwayTeam);
             if (teamMatch >= 2)
             {
                 result.Confidence += 35;
@@ -183,8 +175,14 @@ public class ReleaseMatchingService
             }
             else if (teamMatch == 1)
             {
-                result.Confidence += 15;
-                result.MatchReasons.Add("One team name found");
+                // Only ONE team matches - this is likely a DIFFERENT game
+                // e.g., searching "Detroit Pistons vs Denver Nuggets" but found "New York Knicks vs Denver Nuggets"
+                // Hard reject to prevent downloading wrong matchups
+                result.Confidence -= 100;
+                result.IsHardRejection = true;
+                result.Rejections.Add("Only one team name found - likely a different matchup");
+                _logger.LogDebug("[Release Matching] Hard rejection: only 1 of 2 teams found in '{Release}' for event '{Event}'",
+                    release.Title, evt.Title);
             }
             else
             {
@@ -363,6 +361,20 @@ public class ReleaseMatchingService
                 }
             }
             // else: Multi-part enabled but no specific part requested - accept any (parts or full event)
+        }
+
+        // VALIDATION 5b: Cross-sport detection
+        // Prevent releases from completely different sports from matching
+        // e.g., Olympic Snowboard Qualifying should NOT match F1 Qualifying
+        var differentSport = DetectDifferentSport(release.Title, evt);
+        if (differentSport != null)
+        {
+            result.Confidence -= 100;
+            result.IsHardRejection = true;
+            result.Rejections.Add($"Different sport detected in release: {differentSport}");
+            _logger.LogInformation("[Release Matching] Hard rejection: different sport '{Sport}' detected in '{Release}' for event '{Event}'",
+                differentSport, release.Title, evt.Title);
+            return result;
         }
 
         // VALIDATION 6: Motorsport session type validation
@@ -598,55 +610,54 @@ public class ReleaseMatchingService
     /// <summary>
     /// Count how many team names appear in the release title.
     /// Returns 0, 1, or 2.
+    /// Uses string fields (always available) with optional Team navigation properties for ShortName access.
     /// </summary>
-    private int ValidateTeamNames(string releaseTitle, Team homeTeam, Team awayTeam)
+    private int ValidateTeamNames(string releaseTitle, string homeTeamName, string awayTeamName, Team? homeTeam = null, Team? awayTeam = null)
     {
         var normalizedRelease = NormalizeTitle(releaseTitle);
         int matchCount = 0;
 
-        // Check home team
-        if (ContainsTeamName(normalizedRelease, homeTeam))
-        {
+        if (ContainsTeamName(normalizedRelease, homeTeamName, homeTeam))
             matchCount++;
-        }
 
-        // Check away team
-        if (ContainsTeamName(normalizedRelease, awayTeam))
-        {
+        if (ContainsTeamName(normalizedRelease, awayTeamName, awayTeam))
             matchCount++;
-        }
 
         return matchCount;
     }
 
     /// <summary>
-    /// Check if release title contains a team name (or its abbreviation)
+    /// Check if release title contains a team name, its abbreviation, or any known variation.
+    /// Uses the team name string (always available) with optional Team nav property for ShortName.
+    /// Checks against TeamNameVariationData for comprehensive abbreviation/nickname coverage.
     /// </summary>
-    private bool ContainsTeamName(string normalizedRelease, Team team)
+    private bool ContainsTeamName(string normalizedRelease, string teamName, Team? team = null)
     {
-        // Check full name
-        if (normalizedRelease.Contains(NormalizeTitle(team.Name), StringComparison.OrdinalIgnoreCase))
-        {
-            return true;
-        }
+        var normalizedName = NormalizeTitle(teamName);
 
-        // Check short name
-        if (!string.IsNullOrEmpty(team.ShortName) &&
+        // Check full team name (e.g., "Los Angeles Clippers")
+        if (normalizedRelease.Contains(normalizedName, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        // Check short name from database if Team navigation property is loaded (e.g., "LAC")
+        if (team != null && !string.IsNullOrEmpty(team.ShortName) &&
             normalizedRelease.Contains(NormalizeTitle(team.ShortName), StringComparison.OrdinalIgnoreCase))
-        {
             return true;
-        }
 
-        // Check common abbreviations
-        var normalizedName = NormalizeTitle(team.Name);
-        foreach (var (abbrev, fullNames) in TeamAbbreviations)
+        // Check team name variations (abbreviations, nicknames, alternate forms)
+        // e.g., "LA Clippers" for "Los Angeles Clippers", "OKC" for "Oklahoma City Thunder"
+        foreach (var (canonicalName, variations) in TeamNameVariationData.Variations)
         {
-            if (fullNames.Any(fn => normalizedName.Contains(fn, StringComparison.OrdinalIgnoreCase)))
+            // Check if this dictionary entry matches the team we're looking for
+            if (normalizedName.Contains(NormalizeTitle(canonicalName), StringComparison.OrdinalIgnoreCase) ||
+                NormalizeTitle(canonicalName).Contains(normalizedName, StringComparison.OrdinalIgnoreCase))
             {
-                // This team matches an abbreviation - check if abbrev is in release
-                if (Regex.IsMatch(normalizedRelease, $@"\b{abbrev}\b", RegexOptions.IgnoreCase))
+                // This team matches - check if any variation appears in release
+                foreach (var variation in variations)
                 {
-                    return true;
+                    var normalizedVariation = NormalizeTitle(variation);
+                    if (Regex.IsMatch(normalizedRelease, $@"\b{Regex.Escape(normalizedVariation)}\b", RegexOptions.IgnoreCase))
+                        return true;
                 }
             }
         }
@@ -883,6 +894,93 @@ public class ReleaseMatchingService
         }
 
         return null; // No non-event content detected
+    }
+
+    /// <summary>
+    /// Known sport identifiers that indicate a release belongs to a specific sport.
+    /// Maps pattern to sport category. Used to detect cross-sport mismatches.
+    /// </summary>
+    private static readonly (string Pattern, string Sport)[] SportIdentifiers = new[]
+    {
+        // Olympics
+        (@"\bolympic", "Olympics"),
+        (@"\bolympiad", "Olympics"),
+        (@"\bwinter[\s\.\-_]*games\b", "Olympics"),
+        (@"\bsummer[\s\.\-_]*games\b", "Olympics"),
+
+        // Winter sports
+        (@"\bsnowboard", "Snowboard"),
+        (@"\bski[\s\.\-_]*jump", "Ski Jumping"),
+        (@"\bcross[\s\.\-_]*country[\s\.\-_]*ski", "Cross-Country Skiing"),
+        (@"\balpine[\s\.\-_]*ski", "Alpine Skiing"),
+        (@"\bbiathlon\b", "Biathlon"),
+        (@"\bbobsled\b", "Bobsled"),
+        (@"\bbobsleigh\b", "Bobsled"),
+        (@"\bluge\b", "Luge"),
+        (@"\bcurling\b", "Curling"),
+        (@"\bfigure[\s\.\-_]*skat", "Figure Skating"),
+        (@"\bspeed[\s\.\-_]*skat", "Speed Skating"),
+        (@"\bice[\s\.\-_]*hockey\b", "Ice Hockey"),
+
+        // Other sports that could have "qualifying" or similar session keywords
+        (@"\btennis\b", "Tennis"),
+        (@"\bgolf\b", "Golf"),
+        (@"\bcricket\b", "Cricket"),
+        (@"\brugby\b", "Rugby"),
+        (@"\bswimming\b", "Swimming"),
+        (@"\bathletics\b", "Athletics"),
+        (@"\bgymnastics\b", "Gymnastics"),
+        (@"\bwrestling\b", "Wrestling"),
+        (@"\bfencing\b", "Fencing"),
+        (@"\barchery\b", "Archery"),
+        (@"\bsailing\b", "Sailing"),
+        (@"\browing\b", "Rowing"),
+        (@"\bdiving\b", "Diving"),
+        (@"\bsurfing\b", "Surfing"),
+        (@"\bskateboard", "Skateboarding"),
+    };
+
+    /// <summary>
+    /// Detect if a release belongs to a completely different sport than the event.
+    /// Returns the detected sport name if a mismatch is found, null otherwise.
+    ///
+    /// This prevents cross-sport false positives where shared terminology (like "Qualifying")
+    /// causes releases from one sport to match events from another.
+    /// e.g., "Olympics.Snowboard.Qualifying" should NOT match "F1 Australian GP Qualifying"
+    /// </summary>
+    private string? DetectDifferentSport(string releaseTitle, Event evt)
+    {
+        // Build a set of sport identifiers that belong to the event's sport/league
+        // We don't want to reject releases that match the event's own sport
+        var eventSport = evt.Sport?.ToLowerInvariant() ?? "";
+        var eventLeague = evt.League?.Name?.ToLowerInvariant() ?? "";
+        var eventTitle = evt.Title?.ToLowerInvariant() ?? "";
+
+        foreach (var (pattern, sport) in SportIdentifiers)
+        {
+            if (Regex.IsMatch(releaseTitle, pattern, RegexOptions.IgnoreCase))
+            {
+                // Check if this sport identifier is actually part of the event's own sport/league
+                var sportLower = sport.ToLowerInvariant();
+                if (eventSport.Contains(sportLower) || eventLeague.Contains(sportLower) || eventTitle.Contains(sportLower))
+                {
+                    // This sport identifier belongs to the event itself - not a mismatch
+                    continue;
+                }
+
+                // Also check reverse: if the release sport pattern matches the event's league/sport context
+                if (Regex.IsMatch(eventSport, pattern, RegexOptions.IgnoreCase) ||
+                    Regex.IsMatch(eventLeague, pattern, RegexOptions.IgnoreCase))
+                {
+                    continue;
+                }
+
+                // Found a different sport in the release - this is a mismatch
+                return sport;
+            }
+        }
+
+        return null;
     }
 }
 

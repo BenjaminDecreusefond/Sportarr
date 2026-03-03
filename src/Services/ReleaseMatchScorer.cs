@@ -256,6 +256,11 @@ public class ReleaseMatchScorer
         if (parsed.Year.HasValue && parsed.Year != evt.EventDate.Year)
             return 0;
 
+        // Cross-sport detection - reject releases from completely different sports
+        // e.g., Olympic Snowboard Qualifying should NOT match F1 Qualifying
+        if (ContainsDifferentSport(releaseTitle, evt))
+            return 0;
+
         // === SCORING CRITERIA ===
 
         // Base score for matching year (if year info exists)
@@ -286,11 +291,25 @@ public class ReleaseMatchScorer
             }
         }
 
-        // Sport prefix match bonus (for known sports like NFL, UFC, F1)
-        // This is a bonus, not a requirement - allows unrecognized sports to pass through
-        if (!string.IsNullOrEmpty(parsed.SportPrefix) && !string.IsNullOrEmpty(eventSportPrefix) &&
-            parsed.SportPrefix.Equals(eventSportPrefix, StringComparison.OrdinalIgnoreCase))
+        // Sport prefix match for motorsport - HARD REJECT if different motorsport series detected
+        // This prevents Formula E releases from matching Formula 1 events (both have similar structure)
+        // For non-motorsport, sport prefix is a bonus only
+        if (IsMotorsport(eventSportPrefix) && !string.IsNullOrEmpty(parsed.SportPrefix) && IsMotorsport(parsed.SportPrefix))
+        {
+            if (!parsed.SportPrefix.Equals(eventSportPrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                // Different motorsport series (e.g., FormulaE vs Formula1) - wrong race/series
+                return 0;
+            }
+            // Same motorsport series - give bonus points
             score += 15;
+        }
+        else if (!string.IsNullOrEmpty(parsed.SportPrefix) && !string.IsNullOrEmpty(eventSportPrefix) &&
+            parsed.SportPrefix.Equals(eventSportPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            // Non-motorsport: Same sport prefix bonus
+            score += 15;
+        }
 
         // Round number match (for motorsport)
         // CRITICAL: Wrong round should be rejected - Round 19 is NOT Round 22
@@ -397,6 +416,11 @@ public class ReleaseMatchScorer
         var normalized = title.ToUpperInvariant();
 
         // Common motorsport prefixes
+        // IMPORTANT: Check Formula E BEFORE Formula 1 to avoid false matches
+        // "Formula.E" must be detected before "F1" substring matching
+        if (normalized.Contains("FORMULA.E") || normalized.Contains("FORMULAE") ||
+            normalized.Contains("FORMULA E") || normalized.Contains("FE."))
+            return "FormulaE";
         if (normalized.Contains("FORMULA1") || normalized.Contains("FORMULA.1") || normalized.Contains("F1."))
             return "Formula1";
         if (normalized.Contains("MOTOGP") || normalized.Contains("MOTO.GP"))
@@ -449,6 +473,9 @@ public class ReleaseMatchScorer
         if (!string.IsNullOrEmpty(leagueName))
         {
             var upper = leagueName.ToUpperInvariant();
+            // IMPORTANT: Check Formula E BEFORE Formula 1 to avoid false matches
+            if (upper.Contains("FORMULA E") || upper.Contains("FORMULAE"))
+                return "FormulaE";
             if (upper.Contains("FORMULA 1") || upper.Contains("F1"))
                 return "Formula1";
             if (upper.Contains("UFC"))
@@ -1064,7 +1091,7 @@ public class ReleaseMatchScorer
     private bool IsRoundBasedSport(string? sportPrefix)
     {
         if (string.IsNullOrEmpty(sportPrefix)) return false;
-        return sportPrefix is "Formula1" or "MotoGP" or "IndyCar" or "NASCAR" or "WEC";
+        return sportPrefix is "Formula1" or "FormulaE" or "MotoGP" or "IndyCar" or "NASCAR" or "WEC";
     }
 
     private bool IsDateBasedSport(string? sportPrefix)
@@ -1076,7 +1103,7 @@ public class ReleaseMatchScorer
     private bool IsMotorsport(string? sportPrefix)
     {
         if (string.IsNullOrEmpty(sportPrefix)) return false;
-        return sportPrefix is "Formula1" or "MotoGP" or "IndyCar" or "NASCAR" or "WEC";
+        return sportPrefix is "Formula1" or "FormulaE" or "MotoGP" or "IndyCar" or "NASCAR" or "WEC";
     }
 
     private bool IsTeamSport(string? sportPrefix)
@@ -1139,7 +1166,7 @@ public class ReleaseMatchScorer
             .ToList();
 
         if (teamWords.Count == 0)
-            return (false, 0);
+            return CheckTeamAbbreviation(normalizedRelease, teamName);
 
         // Common city prefix words that shouldn't count as a match alone
         var cityPrefixes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -1152,7 +1179,10 @@ public class ReleaseMatchScorer
             .ToList();
 
         if (matchedWords.Count == 0)
-            return (false, 0);
+        {
+            // No word matches - try abbreviation/variation fallback (e.g., "OKC" for "Oklahoma City Thunder")
+            return CheckTeamAbbreviation(normalizedRelease, teamName);
+        }
 
         // Get the team nickname (typically the last word - "Saints", "Dolphins", "Jets", "Chiefs")
         var teamNickname = teamWords.Last();
@@ -1171,7 +1201,8 @@ public class ReleaseMatchScorer
         if (onlyCityPrefixesMatch)
         {
             // Only matched words like "New", "Los", "San" - not a real team match
-            hasMatch = false;
+            // Try abbreviation fallback before giving up
+            return CheckTeamAbbreviation(normalizedRelease, teamName);
         }
         else if (nicknameMatches)
         {
@@ -1185,7 +1216,10 @@ public class ReleaseMatchScorer
         }
         else
         {
-            // Not enough evidence this is the right team
+            // Not enough evidence from word matching - try abbreviation fallback
+            var abbrevResult = CheckTeamAbbreviation(normalizedRelease, teamName);
+            if (abbrevResult.hasMatch)
+                return abbrevResult;
             hasMatch = false;
         }
 
@@ -1193,6 +1227,101 @@ public class ReleaseMatchScorer
         var score = hasMatch ? (int)(20.0 * matchPercentage) : 0;
 
         return (hasMatch, score);
+    }
+
+    /// <summary>
+    /// Fallback team matching using abbreviations and variations from TeamNameVariationData.
+    /// Catches abbreviation-only releases like "OKC vs LAL" that word matching would miss.
+    /// Returns a slightly lower score (15) since abbreviation matches are less certain than full word matches.
+    /// </summary>
+    private (bool hasMatch, int score) CheckTeamAbbreviation(string normalizedRelease, string teamName)
+    {
+        var normalizedTeam = NormalizeTitle(teamName);
+
+        foreach (var (canonicalName, variations) in TeamNameVariationData.Variations)
+        {
+            var normalizedCanonical = NormalizeTitle(canonicalName);
+            if (normalizedTeam.Contains(normalizedCanonical, StringComparison.OrdinalIgnoreCase) ||
+                normalizedCanonical.Contains(normalizedTeam, StringComparison.OrdinalIgnoreCase))
+            {
+                foreach (var variation in variations)
+                {
+                    var normalizedVariation = NormalizeTitle(variation);
+                    if (Regex.IsMatch(normalizedRelease, $@"\b{Regex.Escape(normalizedVariation)}\b", RegexOptions.IgnoreCase))
+                        return (true, 15);
+                }
+            }
+        }
+
+        return (false, 0);
+    }
+
+    /// <summary>
+    /// Known sport identifiers that indicate a release belongs to a specific sport.
+    /// Used to detect cross-sport mismatches and prevent false positives.
+    /// </summary>
+    private static readonly (string Pattern, string Sport)[] CrossSportIdentifiers = new[]
+    {
+        (@"\bolympic", "Olympics"),
+        (@"\bolympiad", "Olympics"),
+        (@"\bwinter[\s\.\-_]*games\b", "Olympics"),
+        (@"\bsummer[\s\.\-_]*games\b", "Olympics"),
+        (@"\bsnowboard", "Snowboard"),
+        (@"\bski[\s\.\-_]*jump", "Ski Jumping"),
+        (@"\bcross[\s\.\-_]*country[\s\.\-_]*ski", "Cross-Country Skiing"),
+        (@"\balpine[\s\.\-_]*ski", "Alpine Skiing"),
+        (@"\bbiathlon\b", "Biathlon"),
+        (@"\bbobsled\b", "Bobsled"),
+        (@"\bbobsleigh\b", "Bobsled"),
+        (@"\bluge\b", "Luge"),
+        (@"\bcurling\b", "Curling"),
+        (@"\bfigure[\s\.\-_]*skat", "Figure Skating"),
+        (@"\bspeed[\s\.\-_]*skat", "Speed Skating"),
+        (@"\bice[\s\.\-_]*hockey\b", "Ice Hockey"),
+        (@"\btennis\b", "Tennis"),
+        (@"\bgolf\b", "Golf"),
+        (@"\bcricket\b", "Cricket"),
+        (@"\brugby\b", "Rugby"),
+        (@"\bswimming\b", "Swimming"),
+        (@"\bathletics\b", "Athletics"),
+        (@"\bgymnastics\b", "Gymnastics"),
+        (@"\bwrestling\b", "Wrestling"),
+        (@"\bfencing\b", "Fencing"),
+        (@"\barchery\b", "Archery"),
+        (@"\bsailing\b", "Sailing"),
+        (@"\browing\b", "Rowing"),
+        (@"\bdiving\b", "Diving"),
+        (@"\bsurfing\b", "Surfing"),
+        (@"\bskateboard", "Skateboarding"),
+    };
+
+    /// <summary>
+    /// Check if a release title contains sport identifiers from a completely different sport than the event.
+    /// Returns true if a cross-sport mismatch is detected.
+    /// </summary>
+    private bool ContainsDifferentSport(string releaseTitle, Event evt)
+    {
+        var eventSport = evt.Sport?.ToLowerInvariant() ?? "";
+        var eventLeague = evt.League?.Name?.ToLowerInvariant() ?? "";
+        var eventTitle = evt.Title?.ToLowerInvariant() ?? "";
+
+        foreach (var (pattern, sport) in CrossSportIdentifiers)
+        {
+            if (Regex.IsMatch(releaseTitle, pattern, RegexOptions.IgnoreCase))
+            {
+                var sportLower = sport.ToLowerInvariant();
+                if (eventSport.Contains(sportLower) || eventLeague.Contains(sportLower) || eventTitle.Contains(sportLower))
+                    continue;
+
+                if (Regex.IsMatch(eventSport, pattern, RegexOptions.IgnoreCase) ||
+                    Regex.IsMatch(eventLeague, pattern, RegexOptions.IgnoreCase))
+                    continue;
+
+                return true;
+            }
+        }
+
+        return false;
     }
 
     #endregion

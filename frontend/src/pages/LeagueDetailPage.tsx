@@ -1,14 +1,13 @@
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeftIcon, MagnifyingGlassIcon, ChevronDownIcon, ChevronRightIcon, UserIcon, ArrowPathIcon, UsersIcon, TrashIcon, FilmIcon, FolderOpenIcon, ExclamationTriangleIcon, SignalIcon, VideoCameraIcon } from '@heroicons/react/24/outline';
-import { CheckCircleIcon, XCircleIcon } from '@heroicons/react/24/solid';
+import { CheckCircleIcon, XCircleIcon, CheckIcon } from '@heroicons/react/24/solid';
 import { useState, useEffect, useRef, useMemo } from 'react';
 import apiClient from '../api/client';
 import { toast } from 'sonner';
 import ManualSearchModal from '../components/ManualSearchModal';
 import SeasonSearchModal from '../components/SeasonSearchModal';
 import AddLeagueModal from '../components/AddLeagueModal';
-import ConfirmationModal from '../components/ConfirmationModal';
 import EventFileDetailModal from '../components/EventFileDetailModal';
 import LeagueFilesModal from '../components/LeagueFilesModal';
 import EventStatusBadge from '../components/EventStatusBadge';
@@ -219,6 +218,7 @@ export default function LeagueDetailPage() {
   });
   const [isEditTeamsModalOpen, setIsEditTeamsModalOpen] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteLeagueFolder, setDeleteLeagueFolder] = useState(false);
 
   // CRITICAL: Store stable modal data in refs to prevent modal unmounting during query refetch
   // When queryClient.invalidateQueries runs, the league data might briefly become undefined,
@@ -531,7 +531,7 @@ export default function LeagueDetailPage() {
     return motorsports.some(s => sport.toLowerCase().includes(s.toLowerCase()));
   };
 
-  // Update league settings (monitor type, quality profile, search options, monitored parts, session types)
+  // Update league settings (monitor type, quality profile, search options, monitored parts, session types, event types)
   const updateLeagueSettingsMutation = useMutation({
     mutationFn: async (settings: {
       monitorType?: string;
@@ -541,6 +541,7 @@ export default function LeagueDetailPage() {
       monitoredParts?: string | null;
       applyMonitoredPartsToEvents?: boolean;
       monitoredSessionTypes?: string | null;
+      monitoredEventTypes?: string | null;
       monitoredTeamIds?: string[];
       searchQueryTemplate?: string | null;
     }) => {
@@ -592,10 +593,9 @@ export default function LeagueDetailPage() {
 
   // Delete league
   const deleteLeagueMutation = useMutation({
-    mutationFn: async () => {
-      // Pass deleteFiles: false (matches LeaguesPage behavior when checkbox is unchecked)
+    mutationFn: async (deleteFiles: boolean) => {
       const response = await apiClient.delete(`/leagues/${id}`, {
-        params: { deleteFiles: false }
+        params: { deleteFiles }
       });
       return response.data;
     },
@@ -673,7 +673,8 @@ export default function LeagueDetailPage() {
     searchForCutoffUnmetEvents: boolean,
     monitoredParts: string | null,
     applyMonitoredPartsToEvents: boolean,
-    monitoredSessionTypes: string | null
+    monitoredSessionTypes: string | null,
+    monitoredEventTypes: string | null
   ) => {
     updateLeagueSettingsMutation.mutate({
       monitoredTeamIds,
@@ -684,6 +685,7 @@ export default function LeagueDetailPage() {
       monitoredParts,
       applyMonitoredPartsToEvents,
       monitoredSessionTypes,
+      monitoredEventTypes,
     });
   };
 
@@ -735,6 +737,7 @@ export default function LeagueDetailPage() {
   // Helper to close delete confirmation and clean up ref
   const closeDeleteConfirm = () => {
     setShowDeleteConfirm(false);
+    setDeleteLeagueFolder(false);
     setTimeout(() => {
       deleteModalDataRef.current = null;
     }, 300);
@@ -1920,20 +1923,16 @@ export default function LeagueDetailPage() {
                                 const isAllPartsMonitored = monitoredParts === null || monitoredParts === undefined;
                                 const partsArray = monitoredParts ? monitoredParts.split(',').map((p: string) => p.trim()).filter(Boolean) : [];
 
-                                // Check if league has any monitored teams (for fighting sports)
-                                const hasMonitoredTeams = league?.monitoredTeams?.some(mt => mt.monitored) ?? false;
+                                // Find part status from backend (pre-computed with correct monitoring state)
+                                const partStatus = event.partStatuses?.find(ps => ps.partName === part.name);
 
-                                // Parts are monitored if:
-                                // 1. The event is individually monitored (user manually monitored it), OR
-                                // 2. The league has monitored teams (normal case)
-                                // AND the part is in the monitored parts list (or all parts are monitored)
-                                const eventOrLeagueMonitored = event.monitored || hasMonitoredTeams;
-                                const isPartMonitored = eventOrLeagueMonitored && (isAllPartsMonitored || partsArray.includes(part.name));
+                                // Use backend's pre-computed monitoring status which correctly handles:
+                                // - If event is unmonitored, all parts are unmonitored
+                                // - If event is monitored, respects monitoredParts selection
+                                // Fallback to client-side calculation only if partStatuses unavailable
+                                const isPartMonitored = partStatus?.monitored ?? (event.monitored && (isAllPartsMonitored || partsArray.includes(part.name)));
 
                                 // Find if this part has a downloaded file
-                                // First try partStatuses (pre-computed by backend with proper file info)
-                                // Fall back to searching event.files by partName for backwards compatibility
-                                const partStatus = event.partStatuses?.find(ps => ps.partName === part.name);
                                 const partFile = partStatus?.file ?? event.files?.find(f => f.partName === part.name && f.exists);
 
                                 return (
@@ -2153,22 +2152,79 @@ export default function LeagueDetailPage() {
         leagueId={editModalDataRef.current?.leagueId || null}
       />
 
-      {/* Delete Confirmation Modal - Always rendered, uses show prop for proper transition cleanup */}
-      <ConfirmationModal
-        isOpen={showDeleteConfirm}
-        onClose={closeDeleteConfirm}
-        onConfirm={() => {
-          deleteLeagueMutation.mutate();
-          closeDeleteConfirm();
-        }}
-        title={deleteModalDataRef.current ? "Delete League" : undefined}
-        message={deleteModalDataRef.current ? `Are you sure you want to delete "${deleteModalDataRef.current.name}"? This will remove the league${
-          deleteModalDataRef.current.eventCount > 0 ? ` and all ${deleteModalDataRef.current.eventCount} event${deleteModalDataRef.current.eventCount !== 1 ? 's' : ''}` : ''
-        } from your library.` : undefined}
-        confirmText="Delete League"
-        confirmButtonClass="bg-red-600 hover:bg-red-700"
-        isLoading={deleteLeagueMutation.isPending}
-      />
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && deleteModalDataRef.current && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+          <div className="bg-gray-900 border border-red-900/50 rounded-lg p-6 max-w-lg w-full mx-4 shadow-2xl">
+            <h2 className="text-xl font-bold text-white mb-4">Remove League from Sportarr?</h2>
+
+            <p className="text-gray-400 mb-4">
+              This will remove <span className="text-white font-medium">"{deleteModalDataRef.current.name}"</span>
+              {deleteModalDataRef.current.eventCount > 0 && (
+                <> and all <span className="text-white font-medium">{deleteModalDataRef.current.eventCount}</span> event{deleteModalDataRef.current.eventCount !== 1 ? 's' : ''}</>
+              )} from Sportarr's library.
+            </p>
+
+            <p className="text-gray-500 text-sm mb-4">
+              By default, your downloaded files will remain on disk.
+            </p>
+
+            {/* Delete folder checkbox */}
+            <label className="flex items-start gap-3 mb-6 cursor-pointer group">
+              <div className="relative flex items-center">
+                <input
+                  type="checkbox"
+                  checked={deleteLeagueFolder}
+                  onChange={(e) => setDeleteLeagueFolder(e.target.checked)}
+                  className="sr-only"
+                />
+                <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
+                  deleteLeagueFolder
+                    ? 'bg-red-600 border-red-600'
+                    : 'border-gray-500 group-hover:border-gray-400'
+                }`}>
+                  {deleteLeagueFolder && (
+                    <CheckIcon className="h-3 w-3 text-white" />
+                  )}
+                </div>
+              </div>
+              <div>
+                <span className="text-white font-medium">Also delete league folder and all files</span>
+                <p className="text-gray-500 text-sm">This will permanently delete all media files for this league from disk.</p>
+              </div>
+            </label>
+
+            {/* Warning for delete files */}
+            {deleteLeagueFolder && (
+              <div className="bg-red-900/30 border border-red-600/50 rounded-lg p-3 mb-4">
+                <p className="text-red-400 text-sm">
+                  <strong>Warning:</strong> This action cannot be undone. All media files in the league folder will be permanently deleted.
+                </p>
+              </div>
+            )}
+
+            {/* Dialog buttons */}
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={closeDeleteConfirm}
+                disabled={deleteLeagueMutation.isPending}
+                className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 font-semibold transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  deleteLeagueMutation.mutate(deleteLeagueFolder);
+                }}
+                disabled={deleteLeagueMutation.isPending}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-semibold transition-colors disabled:opacity-50"
+              >
+                {deleteLeagueMutation.isPending ? 'Removing...' : (deleteLeagueFolder ? 'Remove & Delete Files' : 'Remove League')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

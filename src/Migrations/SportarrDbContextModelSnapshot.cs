@@ -546,6 +546,12 @@ namespace Sportarr.Api.Migrations
                     b.Property<int>("Priority")
                         .HasColumnType("INTEGER");
 
+                    b.Property<bool>("RemoveCompletedDownloads")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("RemoveFailedDownloads")
+                        .HasColumnType("INTEGER");
+
                     b.Property<bool>("SequentialDownload")
                         .HasColumnType("INTEGER");
 
@@ -1560,6 +1566,47 @@ namespace Sportarr.Api.Migrations
                     b.ToTable("ImportListExclusions");
                 });
 
+            modelBuilder.Entity("Sportarr.Api.Models.FollowedTeam", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("Added")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("BadgeUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ExternalId")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("LastLeagueDiscovery")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Sport")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExternalId")
+                        .IsUnique();
+
+                    b.HasIndex("Sport");
+
+                    b.ToTable("FollowedTeams");
+                });
+
             modelBuilder.Entity("Sportarr.Api.Models.Indexer", b =>
                 {
                     b.Property<int>("Id")
@@ -1952,6 +1999,9 @@ namespace Sportarr.Api.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<string>("MonitoredSessionTypes")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("MonitoredEventTypes")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Name")
