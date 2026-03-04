@@ -12228,10 +12228,42 @@ app.MapPost("/api/v1/indexer", async (
         // DUPLICATE PREVENTION: Check if an indexer with the same baseUrl already exists
         // Prowlarr identifies its indexers by the baseUrl pattern (e.g., http://prowlarr:9696/7/api)
         // Check both with and without trailing slash to handle legacy data
+        //
+        // ENHANCED: Also check by URL path to handle different hostnames pointing to the same Prowlarr instance
+        // e.g., http://192.168.1.5:9696/2/, http://host.docker.internal:9696/2/, http://prowlarr:9696/2/
+        // All three have path "/2/" which is the Prowlarr indexer ID - they're the same indexer
         var normalizedBaseUrl = (baseUrl ?? "").TrimEnd('/').ToLowerInvariant();
         var normalizedBaseUrlWithSlash = normalizedBaseUrl + "/";
+
+        // Extract URL path for secondary dedup (handles different hostnames for same Prowlarr instance)
+        string? urlPath = null;
+        if (Uri.TryCreate(normalizedBaseUrlWithSlash, UriKind.Absolute, out var parsedUri))
+        {
+            urlPath = parsedUri.AbsolutePath.TrimEnd('/');
+        }
+
         var existingIndexer = await db.Indexers
             .FirstOrDefaultAsync(i => i.Url.ToLower() == normalizedBaseUrl || i.Url.ToLower() == normalizedBaseUrlWithSlash);
+
+        // If no exact URL match, try matching by name + URL path (same Prowlarr indexer via different hostname)
+        if (existingIndexer == null && !string.IsNullOrEmpty(urlPath) && urlPath != "")
+        {
+            var allIndexers = await db.Indexers.ToListAsync();
+            existingIndexer = allIndexers.FirstOrDefault(i =>
+            {
+                if (!Uri.TryCreate(i.Url.TrimEnd('/') + "/", UriKind.Absolute, out var existingUri))
+                    return false;
+                var existingPath = existingUri.AbsolutePath.TrimEnd('/');
+                // Same Prowlarr indexer path AND same indexer name = duplicate via different hostname
+                return existingPath == urlPath && i.Name.Equals(name, StringComparison.OrdinalIgnoreCase);
+            });
+
+            if (existingIndexer != null)
+            {
+                logger.LogInformation("[PROWLARR] Found duplicate indexer by path match: existing URL={ExistingUrl}, new URL={NewUrl}, path={Path}",
+                    existingIndexer.Url, baseUrl, urlPath);
+            }
+        }
 
         Indexer indexer;
         bool isUpdate = false;
@@ -12243,6 +12275,7 @@ app.MapPost("/api/v1/indexer", async (
 
             existingIndexer.Name = name;
             existingIndexer.Type = implementation.ToLower().Contains("newznab") ? IndexerType.Newznab : IndexerType.Torznab;
+            existingIndexer.Url = baseUrl ?? existingIndexer.Url; // Update URL to latest hostname
             existingIndexer.ApiKey = apiKey;
             existingIndexer.Categories = !string.IsNullOrWhiteSpace(categories)
                 ? categories.Split(',', StringSplitOptions.RemoveEmptyEntries).ToList()
