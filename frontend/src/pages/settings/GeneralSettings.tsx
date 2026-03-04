@@ -1015,14 +1015,40 @@ export default function GeneralSettings({ showAdvanced = false }: GeneralSetting
             <div className="flex items-center justify-between mb-2">
               <span className="text-white font-medium">Jellyfin</span>
             </div>
-            <p className="text-gray-400 text-xs mb-3">
-              Install the Sportarr plugin for automatic sports metadata.
+            <p className="text-gray-400 text-xs mb-2">
+              <strong className="text-gray-300">Plugin Repository</strong> (Recommended)
             </p>
+            <div className="flex items-center gap-2 mb-3">
+              <code className="flex-1 text-xs bg-gray-800 text-gray-300 px-2 py-1.5 rounded overflow-hidden text-ellipsis whitespace-nowrap" title="https://raw.githubusercontent.com/sportarr/Sportarr/main/agents/jellyfin/manifest.json">
+                https://raw.githubusercontent.com/sportarr/Sportarr/main/agents/jellyfin/manifest.json
+              </code>
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText('https://raw.githubusercontent.com/sportarr/Sportarr/main/agents/jellyfin/manifest.json');
+                    toast.success('Repository URL copied to clipboard');
+                  } catch {
+                    const textArea = document.createElement('textarea');
+                    textArea.value = 'https://raw.githubusercontent.com/sportarr/Sportarr/main/agents/jellyfin/manifest.json';
+                    document.body.appendChild(textArea);
+                    textArea.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(textArea);
+                    toast.success('Repository URL copied to clipboard');
+                  }
+                }}
+                className="p-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded transition-colors flex-shrink-0"
+                title="Copy URL"
+              >
+                <ClipboardDocumentIcon className="w-4 h-4" />
+              </button>
+            </div>
             <div className="text-gray-400 text-xs mb-3 space-y-1 flex-1">
-              <p><strong className="text-gray-300">Setup (Plugin Repository):</strong></p>
+              <p><strong className="text-gray-300">Setup:</strong></p>
               <p>1. Dashboard → Plugins → Repositories → Add</p>
               <p>2. Name: <code className="bg-gray-800 px-1 rounded">Sportarr</code></p>
-              <p>3. URL: <code className="bg-gray-800 px-1 rounded text-[10px]">https://raw.githubusercontent.com/sportarr/Sportarr/main/agents/jellyfin/manifest.json</code></p>
+              <p>3. Paste URL above → Save</p>
               <p>4. Catalog → Metadata → Install Sportarr → Restart Jellyfin</p>
             </div>
             <a
