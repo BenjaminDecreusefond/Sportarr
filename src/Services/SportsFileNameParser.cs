@@ -278,7 +278,7 @@ public class SportsFileNameParser
         {
             Sport = "Motorsport",
             Organization = "Formula 3",
-            Pattern = new Regex(@"(?:Formula[\.\-\s]+3|F3)[\.\-\s]+(?<year>\d{4})[\.\-\s]+(?:Round[\.\-\s]+(?<round>\d+)[\.\-\s]+)?(?<location>[A-Za-z]+(?:[\.\-\z]+[A-Za-z]+)?)(?=[\.\-\s]+\d{3,4}p|[\.\-\s]+(?:WEB|HDTV|BluRay|h264|x264|x265)|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled),
+            Pattern = new Regex(@"(?:Formula[\.\-\s]+3|F3)[\.\-\s]+(?<year>\d{4})[\.\-\s]+(?:Round[\.\-\s]+(?<round>\d+)[\.\-\s]+)?(?<location>[A-Za-z]+(?:[\.\-\s]+[A-Za-z]+)?)(?=[\.\-\s]+\d{3,4}p|[\.\-\s]+(?:WEB|HDTV|BluRay|h264|x264|x265)|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled),
             TitleBuilder = (match) => $"{CleanLocationName(match.Groups["location"].Value)} Grand Prix",
             RoundExtractor = (match) => match.Groups["round"].Success && int.TryParse(match.Groups["round"].Value, out var r) ? r : (int?)null,
             LocationExtractor = (match) => CleanLocationName(match.Groups["location"].Value)

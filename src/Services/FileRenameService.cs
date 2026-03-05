@@ -13,18 +13,18 @@ public class FileRenameService
 {
     private readonly SportarrDbContext _db;
     private readonly FileNamingService _fileNamingService;
-    private readonly SportarrApiClient _theSportsDBClient;
+    private readonly SportarrApiClient _sportarrApiClient;
     private readonly ILogger<FileRenameService> _logger;
 
     public FileRenameService(
         SportarrDbContext db,
         FileNamingService fileNamingService,
-        SportarrApiClient theSportsDBClient,
+        SportarrApiClient sportarrApiClient,
         ILogger<FileRenameService> logger)
     {
         _db = db;
         _fileNamingService = fileNamingService;
-        _theSportsDBClient = theSportsDBClient;
+        _sportarrApiClient = sportarrApiClient;
         _logger = logger;
     }
 
@@ -76,7 +76,7 @@ public class FileRenameService
         Dictionary<string, int>? apiEpisodeMap = null;
         try
         {
-            apiEpisodeMap = await _theSportsDBClient.GetEpisodeNumbersFromApiAsync(league.ExternalId, season);
+            apiEpisodeMap = await _sportarrApiClient.GetEpisodeNumbersFromApiAsync(league.ExternalId, season);
             if (apiEpisodeMap != null && apiEpisodeMap.Any())
             {
                 _logger.LogInformation("[File Rename] Retrieved {Count} episode numbers from API for league {League}, season {Season}",

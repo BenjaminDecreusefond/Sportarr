@@ -11,7 +11,7 @@ namespace Sportarr.Api.Services;
 public class LeagueEventSyncService
 {
     private readonly SportarrDbContext _db;
-    private readonly SportarrApiClient _theSportsDBClient;
+    private readonly SportarrApiClient _sportarrApiClient;
     private readonly FileRenameService _fileRenameService;
     private readonly ILogger<LeagueEventSyncService> _logger;
 
@@ -20,12 +20,12 @@ public class LeagueEventSyncService
 
     public LeagueEventSyncService(
         SportarrDbContext db,
-        SportarrApiClient theSportsDBClient,
+        SportarrApiClient sportarrApiClient,
         FileRenameService fileRenameService,
         ILogger<LeagueEventSyncService> logger)
     {
         _db = db;
-        _theSportsDBClient = theSportsDBClient;
+        _sportarrApiClient = sportarrApiClient;
         _fileRenameService = fileRenameService;
         _logger = logger;
     }
@@ -121,7 +121,7 @@ public class LeagueEventSyncService
             _logger.LogInformation("[League Event Sync] Fetching available seasons from Sportarr API for league: {LeagueName} (fullHistoricalSync: {FullSync})",
                 league.Name, fullHistoricalSync);
 
-            var availableSeasons = await _theSportsDBClient.GetAllSeasonsAsync(league.ExternalId);
+            var availableSeasons = await _sportarrApiClient.GetAllSeasonsAsync(league.ExternalId);
 
             if (availableSeasons != null && availableSeasons.Any())
             {
@@ -184,7 +184,7 @@ public class LeagueEventSyncService
             _logger.LogInformation("[League Event Sync] Processing season {Current}/{Total}: {Season}",
                 seasonIndex, seasons.Count, season);
 
-            var events = await _theSportsDBClient.GetLeagueSeasonAsync(league.ExternalId, season);
+            var events = await _sportarrApiClient.GetLeagueSeasonAsync(league.ExternalId, season);
 
             if (events == null || !events.Any())
             {
@@ -194,7 +194,7 @@ public class LeagueEventSyncService
 
             // Fetch episode numbers from sportarr.net API for this season
             // This ensures episode numbering matches Plex metadata (sequential across ALL events in the league)
-            var apiEpisodeMap = await _theSportsDBClient.GetEpisodeNumbersFromApiAsync(league.ExternalId, season);
+            var apiEpisodeMap = await _sportarrApiClient.GetEpisodeNumbersFromApiAsync(league.ExternalId, season);
             if (apiEpisodeMap != null && apiEpisodeMap.Any())
             {
                 _logger.LogInformation("[League Event Sync] Season {Season}: Loaded {Count} episode numbers from API",

@@ -18,7 +18,7 @@ public class LibraryImportService
     private readonly FileNamingService _namingService;
     private readonly EventPartDetector _partDetector;
     private readonly ConfigService _configService;
-    private readonly SportarrApiClient _theSportsDBClient;
+    private readonly SportarrApiClient _sportarrApiClient;
 
     private static readonly string[] VideoExtensions = { ".mkv", ".mp4", ".avi", ".m4v", ".mov", ".wmv", ".ts", ".webm", ".flv" };
 
@@ -30,7 +30,7 @@ public class LibraryImportService
         FileNamingService namingService,
         EventPartDetector partDetector,
         ConfigService configService,
-        SportarrApiClient theSportsDBClient)
+        SportarrApiClient sportarrApiClient)
     {
         _db = db;
         _logger = logger;
@@ -39,7 +39,7 @@ public class LibraryImportService
         _namingService = namingService;
         _partDetector = partDetector;
         _configService = configService;
-        _theSportsDBClient = theSportsDBClient;
+        _sportarrApiClient = sportarrApiClient;
     }
 
     /// <summary>
@@ -1349,7 +1349,7 @@ public class LibraryImportService
 
         try
         {
-            var apiEpisodeMap = await _theSportsDBClient.GetEpisodeNumbersFromApiAsync(league.ExternalId, season);
+            var apiEpisodeMap = await _sportarrApiClient.GetEpisodeNumbersFromApiAsync(league.ExternalId, season);
             if (apiEpisodeMap != null && !string.IsNullOrEmpty(eventInfo.ExternalId) &&
                 apiEpisodeMap.TryGetValue(eventInfo.ExternalId, out var apiEpisodeNumber))
             {
