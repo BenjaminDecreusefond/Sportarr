@@ -188,15 +188,16 @@ public class SportsFileNameParser
             TitleBuilder = (match) => $"{match.Groups["team1"].Value.Replace(".", " ")} vs {match.Groups["team2"].Value.Replace(".", " ")}"
         },
 
-        // F1/Motorsport patterns: F1.2024.Round.05.Chinese.GP, Formula.1.2024.Monaco.Grand.Prix
+        // F1/Motorsport patterns: F1.2024.Round.05.Chinese.GP, Formula.1.2024.Monaco.Grand.Prix, Formula1.2025.Round08.Monaco
         new SportsPattern
         {
             Sport = "Motorsport",
             Organization = "Formula 1",
-            Pattern = new Regex(@"(?:F1|Formula[\.\-\s]*1|Formula[\.\-\s]*One)[\.\-\s]+(?<year>\d{4})[\.\-\s]+(?:Round[\.\-\s]+(?<round>\d+)[\.\-\s]+)?(?<name>[A-Za-z]+(?:[\.\-\s]+[A-Za-z]+)?)[\.\-\s]*(?:GP|Grand[\.\-\s]*Prix)?", RegexOptions.IgnoreCase | RegexOptions.Compiled),
+            Pattern = new Regex(@"(?:F1|Formula[\.\-\s]*1|Formula[\.\-\s]*One)[\.\-\s]+(?<year>\d{4})[\.\-\s]+(?:Round[\.\-\s]*(?<round>\d+)[\.\-\s]*)?(?<name>[A-Za-z]+(?:[\.\-\s]+[A-Za-z]+)?)[\.\-\s]*(?:GP|Grand[\.\-\s]*Prix)?", RegexOptions.IgnoreCase | RegexOptions.Compiled),
             TitleBuilder = (match) => match.Groups["round"].Success
                 ? $"F1 {match.Groups["year"].Value} Round {match.Groups["round"].Value}: {match.Groups["name"].Value.Replace(".", " ")} GP"
-                : $"F1 {match.Groups["year"].Value} {match.Groups["name"].Value.Replace(".", " ")} GP"
+                : $"F1 {match.Groups["year"].Value} {match.Groups["name"].Value.Replace(".", " ")} GP",
+            RoundExtractor = (match) => match.Groups["round"].Success && int.TryParse(match.Groups["round"].Value, out var r) ? r : (int?)null
         },
 
         // NASCAR patterns: NASCAR.2024.Daytona.500
@@ -208,113 +209,189 @@ public class SportsFileNameParser
             TitleBuilder = (match) => $"NASCAR {match.Groups["year"].Value} {match.Groups["name"].Value.Replace(".", " ")}"
         },
 
-        // Formula E: formula.e.2026.round.03.miami.e.prix, Formula.E.2026.Round.04.Jeddah.E.Prix
+        // Formula E: formula.e.2026.round.03.miami.e.prix, Formula.E.2026.Round04.Jeddah.E.Prix
         new SportsPattern
         {
             Sport = "Motorsport",
             Organization = "Formula E",
-            Pattern = new Regex(@"Formula[\.\-\s]+E[\.\-\s]+(?<year>\d{4})[\.\-\s]+(?:Round[\.\-\s]+(?<round>\d+)[\.\-\s]+)?(?<location>[A-Za-z]+(?:[\.\-\s]+[A-Za-z]+)?)[\.\-\s]+E[\.\-\s]+Prix", RegexOptions.IgnoreCase | RegexOptions.Compiled),
+            Pattern = new Regex(@"Formula[\.\-\s]+E[\.\-\s]+(?<year>\d{4})[\.\-\s]+(?:Round[\.\-\s]*(?<round>\d+)[\.\-\s]*)?(?<location>[A-Za-z]+(?:[\.\-\s]+[A-Za-z]+)?)[\.\-\s]+E[\.\-\s]+Prix", RegexOptions.IgnoreCase | RegexOptions.Compiled),
             TitleBuilder = (match) => $"{CleanLocationName(match.Groups["location"].Value)} E Prix",
             RoundExtractor = (match) => match.Groups["round"].Success && int.TryParse(match.Groups["round"].Value, out var r) ? r : (int?)null,
             LocationExtractor = (match) => CleanLocationName(match.Groups["location"].Value)
         },
-        // Formula E without "E Prix" suffix: Formula.E.2026.Round.03.Miami
+        // Formula E without "E Prix" suffix: Formula.E.2026.Round03.Miami
         new SportsPattern
         {
             Sport = "Motorsport",
             Organization = "Formula E",
-            Pattern = new Regex(@"Formula[\.\-\s]+E[\.\-\s]+(?<year>\d{4})[\.\-\s]+(?:Round[\.\-\s]+(?<round>\d+)[\.\-\s]+)?(?<location>[A-Za-z]+(?:[\.\-\s]+[A-Za-z]+)?)(?=[\.\-\s]+\d{3,4}p|[\.\-\s]+(?:WEB|HDTV|BluRay|h264|x264|x265)|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled),
+            Pattern = new Regex(@"Formula[\.\-\s]+E[\.\-\s]+(?<year>\d{4})[\.\-\s]+(?:Round[\.\-\s]*(?<round>\d+)[\.\-\s]*)?(?<location>[A-Za-z]+(?:[\.\-\s]+[A-Za-z]+)?)(?=[\.\-\s]+\d{3,4}p|[\.\-\s]+(?:WEB|HDTV|BluRay|h264|x264|x265)|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled),
             TitleBuilder = (match) => $"{CleanLocationName(match.Groups["location"].Value)} E Prix",
             RoundExtractor = (match) => match.Groups["round"].Success && int.TryParse(match.Groups["round"].Value, out var r) ? r : (int?)null,
             LocationExtractor = (match) => CleanLocationName(match.Groups["location"].Value)
         },
 
-        // MotoGP: MotoGP.2026.Thailand.1080p, MotoGP.2025.Round.01.Qatar
+        // MotoGP: MotoGP.2026.Thailand.1080p, MotoGP.2025.Round01.Qatar, MotoGP.2025.Round.01.Qatar
         new SportsPattern
         {
             Sport = "Motorsport",
             Organization = "MotoGP",
-            Pattern = new Regex(@"MotoGP[\.\-\s]+(?<year>\d{4})[\.\-\s]+(?:Round[\.\-\s]+(?<round>\d+)[\.\-\s]+)?(?<location>[A-Za-z]+(?:[\.\-\s]+[A-Za-z]+)?)(?=[\.\-\s]+\d{3,4}p|[\.\-\s]+(?:WEB|HDTV|BluRay|h264|x264|x265)|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled),
+            Pattern = new Regex(@"MotoGP[\.\-\s]+(?<year>\d{4})[\.\-\s]+(?:Round[\.\-\s]*(?<round>\d+)[\.\-\s]*)?(?<location>[A-Za-z]+(?:[\.\-\s]+[A-Za-z]+)?)(?=[\.\-\s]+\d{3,4}p|[\.\-\s]+(?:WEB|HDTV|BluRay|h264|x264|x265|Race|Qualifying)|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled),
             TitleBuilder = (match) => $"{CleanLocationName(match.Groups["location"].Value)} Grand Prix",
             RoundExtractor = (match) => match.Groups["round"].Success && int.TryParse(match.Groups["round"].Value, out var r) ? r : (int?)null,
             LocationExtractor = (match) => CleanLocationName(match.Groups["location"].Value)
         },
 
-        // Moto2: Moto2.2026.Round.04.Jeddah, Moto2.2026.Thailand
+        // Moto2: Moto2.2026.Round04.Jeddah, Moto2.2026.Thailand
         new SportsPattern
         {
             Sport = "Motorsport",
             Organization = "Moto2",
-            Pattern = new Regex(@"Moto2[\.\-\s]+(?<year>\d{4})[\.\-\s]+(?:Round[\.\-\s]+(?<round>\d+)[\.\-\s]+)?(?<location>[A-Za-z]+(?:[\.\-\s]+[A-Za-z]+)?)(?=[\.\-\s]+\d{3,4}p|[\.\-\s]+(?:WEB|HDTV|BluRay|h264|x264|x265)|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled),
+            Pattern = new Regex(@"Moto2[\.\-\s]+(?<year>\d{4})[\.\-\s]+(?:Round[\.\-\s]*(?<round>\d+)[\.\-\s]*)?(?<location>[A-Za-z]+(?:[\.\-\s]+[A-Za-z]+)?)(?=[\.\-\s]+\d{3,4}p|[\.\-\s]+(?:WEB|HDTV|BluRay|h264|x264|x265)|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled),
             TitleBuilder = (match) => $"{CleanLocationName(match.Groups["location"].Value)} Grand Prix",
             RoundExtractor = (match) => match.Groups["round"].Success && int.TryParse(match.Groups["round"].Value, out var r) ? r : (int?)null,
             LocationExtractor = (match) => CleanLocationName(match.Groups["location"].Value)
         },
 
-        // Moto3: Moto3.2026.Round.04.Jeddah
+        // Moto3: Moto3.2026.Round04.Jeddah
         new SportsPattern
         {
             Sport = "Motorsport",
             Organization = "Moto3",
-            Pattern = new Regex(@"Moto3[\.\-\s]+(?<year>\d{4})[\.\-\s]+(?:Round[\.\-\s]+(?<round>\d+)[\.\-\s]+)?(?<location>[A-Za-z]+(?:[\.\-\s]+[A-Za-z]+)?)(?=[\.\-\s]+\d{3,4}p|[\.\-\s]+(?:WEB|HDTV|BluRay|h264|x264|x265)|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled),
+            Pattern = new Regex(@"Moto3[\.\-\s]+(?<year>\d{4})[\.\-\s]+(?:Round[\.\-\s]*(?<round>\d+)[\.\-\s]*)?(?<location>[A-Za-z]+(?:[\.\-\s]+[A-Za-z]+)?)(?=[\.\-\s]+\d{3,4}p|[\.\-\s]+(?:WEB|HDTV|BluRay|h264|x264|x265)|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled),
             TitleBuilder = (match) => $"{CleanLocationName(match.Groups["location"].Value)} Grand Prix",
             RoundExtractor = (match) => match.Groups["round"].Success && int.TryParse(match.Groups["round"].Value, out var r) ? r : (int?)null,
             LocationExtractor = (match) => CleanLocationName(match.Groups["location"].Value)
         },
 
-        // Formula 2: Formula.2.2026.Round.03.Bahrain or F2.2026.Round.03.Bahrain
+        // Formula 2: Formula.2.2026.Round03.Bahrain or F2.2026.Round.03.Bahrain
         new SportsPattern
         {
             Sport = "Motorsport",
             Organization = "Formula 2",
-            Pattern = new Regex(@"(?:Formula[\.\-\s]+2|F2)[\.\-\s]+(?<year>\d{4})[\.\-\s]+(?:Round[\.\-\s]+(?<round>\d+)[\.\-\s]+)?(?<location>[A-Za-z]+(?:[\.\-\s]+[A-Za-z]+)?)(?=[\.\-\s]+\d{3,4}p|[\.\-\s]+(?:WEB|HDTV|BluRay|h264|x264|x265)|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled),
+            Pattern = new Regex(@"(?:Formula[\.\-\s]+2|F2)[\.\-\s]+(?<year>\d{4})[\.\-\s]+(?:Round[\.\-\s]*(?<round>\d+)[\.\-\s]*)?(?<location>[A-Za-z]+(?:[\.\-\s]+[A-Za-z]+)?)(?=[\.\-\s]+\d{3,4}p|[\.\-\s]+(?:WEB|HDTV|BluRay|h264|x264|x265)|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled),
             TitleBuilder = (match) => $"{CleanLocationName(match.Groups["location"].Value)} Grand Prix",
             RoundExtractor = (match) => match.Groups["round"].Success && int.TryParse(match.Groups["round"].Value, out var r) ? r : (int?)null,
             LocationExtractor = (match) => CleanLocationName(match.Groups["location"].Value)
         },
 
-        // Formula 3: Formula.3.2026.Round.03.Bahrain or F3.2026.Round.03.Bahrain
+        // Formula 3: Formula.3.2026.Round03.Bahrain or F3.2026.Round.03.Bahrain
         new SportsPattern
         {
             Sport = "Motorsport",
             Organization = "Formula 3",
-            Pattern = new Regex(@"(?:Formula[\.\-\s]+3|F3)[\.\-\s]+(?<year>\d{4})[\.\-\s]+(?:Round[\.\-\s]+(?<round>\d+)[\.\-\s]+)?(?<location>[A-Za-z]+(?:[\.\-\s]+[A-Za-z]+)?)(?=[\.\-\s]+\d{3,4}p|[\.\-\s]+(?:WEB|HDTV|BluRay|h264|x264|x265)|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled),
+            Pattern = new Regex(@"(?:Formula[\.\-\s]+3|F3)[\.\-\s]+(?<year>\d{4})[\.\-\s]+(?:Round[\.\-\s]*(?<round>\d+)[\.\-\s]*)?(?<location>[A-Za-z]+(?:[\.\-\s]+[A-Za-z]+)?)(?=[\.\-\s]+\d{3,4}p|[\.\-\s]+(?:WEB|HDTV|BluRay|h264|x264|x265)|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled),
             TitleBuilder = (match) => $"{CleanLocationName(match.Groups["location"].Value)} Grand Prix",
             RoundExtractor = (match) => match.Groups["round"].Success && int.TryParse(match.Groups["round"].Value, out var r) ? r : (int?)null,
             LocationExtractor = (match) => CleanLocationName(match.Groups["location"].Value)
         },
 
-        // IndyCar: IndyCar.2026.Round.03.Long.Beach or INDYCAR.2026.Long.Beach
+        // IndyCar: IndyCar.Series.2025.Round03.Long.Beach, IndyCar.2026.Round.03.Long.Beach, IndyCar NTT 2025 Iowa Race 12
+        // Pattern A: handles Series/NTT prefix, Round or Race keyword
         new SportsPattern
         {
             Sport = "Motorsport",
             Organization = "IndyCar",
-            Pattern = new Regex(@"IndyCar[\.\-\s]+(?<year>\d{4})[\.\-\s]+(?:Round[\.\-\s]+(?<round>\d+)[\.\-\s]+)?(?<location>[A-Za-z]+(?:[\.\-\s]+[A-Za-z]+)?)(?=[\.\-\s]+\d{3,4}p|[\.\-\s]+(?:WEB|HDTV|BluRay|h264|x264|x265)|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled),
+            Pattern = new Regex(@"IndyCar[\.\-\s]+(?:(?:Series|NTT)[\.\-\s]+)*(?<year>\d{4})[\.\-\s]+(?:(?:Round|Race)[\.\-\s]*(?<round>\d+)[\.\-\s]*)?(?<location>[A-Za-z]+(?:[\.\-\s]+[A-Za-z]+)?)(?=[\.\-\s]+\d{3,4}p|[\.\-\s]+(?:WEB|HDTV|BluRay|h264|x264|x265|Race|FP\d|Qualifying)|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled),
+            TitleBuilder = (match) => $"{CleanLocationName(match.Groups["location"].Value)}",
+            RoundExtractor = (match) => match.Groups["round"].Success && int.TryParse(match.Groups["round"].Value, out var r) ? r : (int?)null,
+            LocationExtractor = (match) => CleanLocationName(match.Groups["location"].Value)
+        },
+        // IndyCar Pattern B: "IndyCar NTT 2025 Iowa Race 12 07" — race number comes after location
+        new SportsPattern
+        {
+            Sport = "Motorsport",
+            Organization = "IndyCar",
+            Pattern = new Regex(@"IndyCar[\.\-\s]+(?:NTT[\.\-\s]+)?(?<year>\d{4})[\.\-\s]+(?<location>[A-Za-z]+(?:[\.\-\s]+[A-Za-z]+)?)[\.\-\s]+Race[\.\-\s]*(?<round>\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled),
             TitleBuilder = (match) => $"{CleanLocationName(match.Groups["location"].Value)}",
             RoundExtractor = (match) => match.Groups["round"].Success && int.TryParse(match.Groups["round"].Value, out var r) ? r : (int?)null,
             LocationExtractor = (match) => CleanLocationName(match.Groups["location"].Value)
         },
 
-        // WSBK (World Superbike): WSBK.2026.Round.03.Phillip.Island
+        // WSBK (World Superbike): WSBK.2026.Round03.Phillip.Island
         new SportsPattern
         {
             Sport = "Motorsport",
             Organization = "WSBK",
-            Pattern = new Regex(@"WSBK[\.\-\s]+(?<year>\d{4})[\.\-\s]+(?:Round[\.\-\s]+(?<round>\d+)[\.\-\s]+)?(?<location>[A-Za-z]+(?:[\.\-\s]+[A-Za-z]+)?)(?=[\.\-\s]+\d{3,4}p|[\.\-\s]+(?:WEB|HDTV|BluRay|h264|x264|x265)|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled),
+            Pattern = new Regex(@"WSBK[\.\-\s]+(?<year>\d{4})[\.\-\s]+(?:Round[\.\-\s]*(?<round>\d+)[\.\-\s]*)?(?<location>[A-Za-z]+(?:[\.\-\s]+[A-Za-z]+)?)(?=[\.\-\s]+\d{3,4}p|[\.\-\s]+(?:WEB|HDTV|BluRay|h264|x264|x265)|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled),
             TitleBuilder = (match) => $"{CleanLocationName(match.Groups["location"].Value)}",
             RoundExtractor = (match) => match.Groups["round"].Success && int.TryParse(match.Groups["round"].Value, out var r) ? r : (int?)null,
             LocationExtractor = (match) => CleanLocationName(match.Groups["location"].Value)
         },
 
-        // WRC (World Rally Championship): WRC.2026.Round.03.Monte.Carlo
+        // WRC (World Rally Championship): WRC.2026.Round03.Monte.Carlo
         new SportsPattern
         {
             Sport = "Motorsport",
             Organization = "WRC",
-            Pattern = new Regex(@"WRC[\.\-\s]+(?<year>\d{4})[\.\-\s]+(?:Round[\.\-\s]+(?<round>\d+)[\.\-\s]+)?(?<location>[A-Za-z]+(?:[\.\-\s]+[A-Za-z]+)?)(?=[\.\-\s]+\d{3,4}p|[\.\-\s]+(?:WEB|HDTV|BluRay|h264|x264|x265)|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled),
+            Pattern = new Regex(@"WRC[\.\-\s]+(?<year>\d{4})[\.\-\s]+(?:Round[\.\-\s]*(?<round>\d+)[\.\-\s]*)?(?<location>[A-Za-z]+(?:[\.\-\s]+[A-Za-z]+)?)(?=[\.\-\s]+\d{3,4}p|[\.\-\s]+(?:WEB|HDTV|BluRay|h264|x264|x265)|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled),
             TitleBuilder = (match) => $"Rally {CleanLocationName(match.Groups["location"].Value)}",
             RoundExtractor = (match) => match.Groups["round"].Success && int.TryParse(match.Groups["round"].Value, out var r) ? r : (int?)null,
             LocationExtractor = (match) => CleanLocationName(match.Groups["location"].Value)
+        },
+
+        // NFL alternate formats: DD-MM-YYYY date, Playoffs/Divisional context words
+        // Handles: "NFL 17-01-2026 AFC Divisional Buffalo Bills vs Denver Broncos"
+        new SportsPattern
+        {
+            Sport = "American Football",
+            Organization = "NFL",
+            Pattern = new Regex(@"NFL[\.\-\s]+(?<day>\d{2})[\.\-\s]+(?<month>\d{2})[\.\-\s]+(?<year>\d{4})[\.\-\s]+(?:(?:AFC|NFC|Super[\.\-\s]+Bowl|Divisional|Wild[\.\-\s]+Card|Playoffs?|Championship|Condensed[\.\-\s]+Game)[\.\-\s]+)*(?<team1>(?:[A-Za-z]+[\.\-\s]+){1,3})(?:vs?\.?|@)[\.\-\s]+(?<team2>(?:[A-Za-z]+[\.\-\s]*)+?)(?=[\.\-\s]+\d{3,4}p|[\.\-\s]+(?:WEB|HDTV|BluRay)|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled),
+            TitleBuilder = (match) => $"{CleanTeamName(match.Groups["team1"].Value)} vs {CleanTeamName(match.Groups["team2"].Value)}"
+        },
+        // Handles: "NFL Playoffs 2026 Steelers vs Texans Condensed Game 12 01"
+        new SportsPattern
+        {
+            Sport = "American Football",
+            Organization = "NFL",
+            Pattern = new Regex(@"NFL[\.\-\s]+(?:Playoffs?|Wild[\.\-\s]+Card|Divisional|Championship|Super[\.\-\s]+Bowl)[\.\-\s]+(?<year>\d{4})[\.\-\s]+(?<team1>(?:[A-Za-z]+[\.\-\s]+){1,3})(?:vs?\.?|@)[\.\-\s]+(?<team2>(?:[A-Za-z]+[\.\-\s]*)+?)(?=[\.\-\s]+\d{3,4}p|[\.\-\s]+(?:WEB|HDTV|BluRay|Condensed)|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled),
+            TitleBuilder = (match) => $"{CleanTeamName(match.Groups["team1"].Value)} vs {CleanTeamName(match.Groups["team2"].Value)}"
+        },
+
+        // NBA alternate formats: RS notation, season spans, DD MM date, YYYYMMDD compact
+        // Handles: "NBA RS 2026 Charlotte Hornets vs Denver Nuggets 18 01"
+        //          "NBA 2025 2026 RS 15 01 2026 OKC @ Houston Rockets"
+        //          "NNBA RS 2026 Boston Celtics vs Atlanta Hawks 17 01" (typo prefix)
+        new SportsPattern
+        {
+            Sport = "Basketball",
+            Organization = "NBA",
+            Pattern = new Regex(@"N+BA[\.\-\s]+(?:\d{4}[\.\-\s]+)?(?:RS|PS|PO)?[\.\-\s]*(?<year>\d{4})[\.\-\s]+(?<team1>(?:[A-Za-z]+[\.\-\s]+){1,3})(?:vs?\.?|@)[\.\-\s]+(?<team2>(?:[A-Za-z]+[\.\-\s]*)+?)(?=[\.\-\s]+\d{1,2}[\.\-\s]+\d{1,2}[\s\.\-]|[\.\-\s]+\d{3,4}p|[\.\-\s]+(?:WEB|HDTV|BluRay)|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled),
+            TitleBuilder = (match) => $"{CleanTeamName(match.Groups["team1"].Value)} vs {CleanTeamName(match.Groups["team2"].Value)}"
+        },
+        // Handles: "NBA_20260119_UTA @ SAS_1080p60" (YYYYMMDD compact + abbreviations)
+        new SportsPattern
+        {
+            Sport = "Basketball",
+            Organization = "NBA",
+            Pattern = new Regex(@"NBA[\.\-\s_]+(?<year>\d{4})(?<month>\d{2})(?<day>\d{2})[\.\-\s_]+(?<team1>[A-Za-z]{2,4})[\s_]*(?:@|vs?)[\s_]*(?<team2>[A-Za-z]{2,4})", RegexOptions.IgnoreCase | RegexOptions.Compiled),
+            TitleBuilder = (match) => $"{match.Groups["team1"].Value.ToUpper()} vs {match.Groups["team2"].Value.ToUpper()}"
+        },
+
+        // NHL alternate formats: DD-MM-YYYY, RS notation, no "vs" separator
+        // Handles: "NHL 20-01-2026 RS Ottawa Senators vs. Columbus Blue Jackets"
+        //          "NHL 15-01-2026 RS Calgary Flames vs. Chicago Blackhawks"
+        new SportsPattern
+        {
+            Sport = "Ice Hockey",
+            Organization = "NHL",
+            Pattern = new Regex(@"NHL[\.\-\s]+(?:RS|PS|PO)?[\.\-\s]*(?<day>\d{2})[\.\-\s]+(?<month>\d{2})[\.\-\s]+(?<year>\d{4})[\.\-\s]+(?<team1>(?:[A-Za-z]+\.?[\.\-\s]+){1,3})(?:vs?\.?|@)[\.\-\s]+(?<team2>(?:[A-Za-z]+\.?[\.\-\s]*)+?)(?=[\.\-\s]+\d{3,4}p|[\.\-\s]+(?:WEB|HDTV|BluRay|720|1080)|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled),
+            TitleBuilder = (match) => $"{CleanTeamName(match.Groups["team1"].Value)} vs {CleanTeamName(match.Groups["team2"].Value)}"
+        },
+        // Handles: "NHL RS 2026 Columbus Blue Jackets Pittsburgh Penguins 17 01" (no vs separator)
+        new SportsPattern
+        {
+            Sport = "Ice Hockey",
+            Organization = "NHL",
+            Pattern = new Regex(@"NHL[\.\-\s]+(?:RS|PS|PO)[\.\-\s]+(?<year>\d{4})[\.\-\s]+(?<team1>(?:[A-Za-z]+[\.\-\s]+){1,4}?)(?<team2>(?:[A-Za-z]+[\.\-\s]+){1,3})(?<day>\d{2})[\.\-\s]+(?<month>\d{2})", RegexOptions.IgnoreCase | RegexOptions.Compiled),
+            TitleBuilder = (match) => $"{CleanTeamName(match.Groups["team1"].Value)} vs {CleanTeamName(match.Groups["team2"].Value)}"
+        },
+        // Handles: "NHL-2026-01-06_FLA@TOR_TNT" (compact date + abbreviations)
+        new SportsPattern
+        {
+            Sport = "Ice Hockey",
+            Organization = "NHL",
+            Pattern = new Regex(@"NHL[\.\-\s_]+(?<year>\d{4})[\.\-\s_]+(?<month>\d{2})[\.\-\s_]+(?<day>\d{2})[\.\-\s_]+(?<team1>[A-Za-z]{2,4})[\s_]*@[\s_]*(?<team2>[A-Za-z]{2,4})", RegexOptions.IgnoreCase | RegexOptions.Compiled),
+            TitleBuilder = (match) => $"{match.Groups["team1"].Value.ToUpper()} vs {match.Groups["team2"].Value.ToUpper()}"
         },
 
         // Tennis patterns: Tennis.Australian.Open.2024.Final

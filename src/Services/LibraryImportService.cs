@@ -1174,13 +1174,16 @@ public class LibraryImportService
         }
 
         // ── ORGANIZATION → LEAGUE ───────────────────────────────────────────────
+        // Hard cross-sport gate: if we identified an organization (IndyCar, NBA, NFL…),
+        // reject any event from a different league immediately. This prevents IndyCar
+        // files from matching NBA events, even when the title fuzzy score is high.
         if (!string.IsNullOrEmpty(organization) && evt.League != null)
         {
-            if (evt.League.Name.Contains(organization, StringComparison.OrdinalIgnoreCase) ||
-                organization.Contains(evt.League.Name, StringComparison.OrdinalIgnoreCase))
-            {
-                confidence += 15;
-            }
+            var leagueMatch = evt.League.Name.Contains(organization, StringComparison.OrdinalIgnoreCase)
+                           || organization.Contains(evt.League.Name, StringComparison.OrdinalIgnoreCase);
+            if (!leagueMatch)
+                return 0; // Wrong sport — eliminate before any title comparison
+            confidence += 15;
         }
 
         // ── DATE PROXIMITY ──────────────────────────────────────────────────────
