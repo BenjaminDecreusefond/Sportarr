@@ -155,6 +155,12 @@ public class DownloadQueueItem
     /// </summary>
     public bool IsPack { get; set; } = false;
 
+    /// <summary>
+    /// Whether this download was triggered by a manual/interactive search (true)
+    /// or an automatic/RSS search (false). Used to determine redownload behavior on failure.
+    /// </summary>
+    public bool IsManualSearch { get; set; } = false;
+
     // Universal event tracking (no subdivisions - all sports use Event.Monitored)
     // Event association is handled via EventId in DownloadQueueItem
 }

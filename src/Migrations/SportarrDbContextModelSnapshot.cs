@@ -41,9 +41,6 @@ namespace Sportarr.Api.Migrations
                     b.Property<bool>("EnableCompletedDownloadHandling")
                         .HasColumnType("INTEGER");
 
-                    b.Property<bool>("EnableFailedDownloadHandling")
-                        .HasColumnType("INTEGER");
-
                     b.Property<string>("HostSettings")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -69,10 +66,7 @@ namespace Sportarr.Api.Migrations
                     b.Property<bool>("RedownloadFailedDownloads")
                         .HasColumnType("INTEGER");
 
-                    b.Property<bool>("RemoveCompletedDownloads")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<bool>("RemoveFailedDownloads")
+                    b.Property<bool>("RedownloadFailedFromInteractiveSearch")
                         .HasColumnType("INTEGER");
 
                     b.Property<int>("SearchSleepDuration")
@@ -612,6 +606,9 @@ namespace Sportarr.Api.Migrations
 
                     b.Property<string>("Indexer")
                         .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsManualSearch")
+                        .HasColumnType("INTEGER");
 
                     b.Property<bool>("IsPack")
                         .HasColumnType("INTEGER");
@@ -2156,12 +2153,6 @@ namespace Sportarr.Api.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<int>("RecycleBinCleanup")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<bool>("RemoveCompletedDownloads")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<bool>("RemoveFailedDownloads")
                         .HasColumnType("INTEGER");
 
                     b.Property<bool>("RenameEvents")

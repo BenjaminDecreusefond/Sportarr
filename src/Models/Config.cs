@@ -102,8 +102,8 @@ public class Config
     // Note: RemoveCompletedDownloads and RemoveFailedDownloads are now per-client settings
     // See DownloadClient.RemoveCompletedDownloads and DownloadClient.RemoveFailedDownloads
     public int CheckForFinishedDownloadInterval { get; set; } = 1; // minutes
-    public bool EnableFailedDownloadHandling { get; set; } = true;
     public bool RedownloadFailedDownloads { get; set; } = true;
+    public bool RedownloadFailedFromInteractiveSearch { get; set; } = true;
 
     // Search Settings
     public int SearchCacheDuration { get; set; } = 300; // seconds (5 min) - cache raw indexer results (prevents duplicate API calls for multi-part events, same-year searches, and different sessions at same location)

@@ -217,8 +217,8 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
           enableCompletedDownloadHandling: data.enableCompletedDownloadHandling ?? true,
           removeCompletedDownloadsGlobal: data.removeCompletedDownloads ?? true,
           checkForFinishedDownloads: data.checkForFinishedDownloadInterval ?? 1,
-          enableFailedDownloadHandling: data.enableFailedDownloadHandling ?? true,
           redownloadFailedEvents: data.redownloadFailedDownloads ?? true,
+          redownloadFailedFromInteractiveSearch: data.redownloadFailedFromInteractiveSearch ?? true,
           removeFailedDownloadsGlobal: data.removeFailedDownloads ?? true,
           maxDownloadQueueSize: data.maxDownloadQueueSize ?? -1,
           searchSleepDuration: data.searchSleepDuration ?? 900
@@ -227,8 +227,8 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
         setEnableCompletedDownloadHandling(loadedSettings.enableCompletedDownloadHandling);
         setRemoveCompletedDownloadsGlobal(loadedSettings.removeCompletedDownloadsGlobal);
         setCheckForFinishedDownloads(loadedSettings.checkForFinishedDownloads);
-        setEnableFailedDownloadHandling(loadedSettings.enableFailedDownloadHandling);
         setRedownloadFailedEvents(loadedSettings.redownloadFailedEvents);
+        setRedownloadFailedFromInteractiveSearch(loadedSettings.redownloadFailedFromInteractiveSearch);
         setRemoveFailedDownloadsGlobal(loadedSettings.removeFailedDownloadsGlobal);
         setMaxDownloadQueueSize(loadedSettings.maxDownloadQueueSize);
         setSearchSleepDuration(loadedSettings.searchSleepDuration);
@@ -256,8 +256,8 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
         enableCompletedDownloadHandling,
         removeCompletedDownloads: removeCompletedDownloadsGlobal,
         checkForFinishedDownloadInterval: checkForFinishedDownloads,
-        enableFailedDownloadHandling,
         redownloadFailedDownloads: redownloadFailedEvents,
+        redownloadFailedFromInteractiveSearch,
         removeFailedDownloads: removeFailedDownloadsGlobal,
         maxDownloadQueueSize,
         searchSleepDuration,
@@ -271,9 +271,9 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
         enableCompletedDownloadHandling,
         removeCompletedDownloadsGlobal,
         checkForFinishedDownloads,
-        enableFailedDownloadHandling,
         removeFailedDownloadsGlobal,
         redownloadFailedEvents,
+        redownloadFailedFromInteractiveSearch,
         maxDownloadQueueSize,
         searchSleepDuration
       };
@@ -294,9 +294,9 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
   const [checkForFinishedDownloads, setCheckForFinishedDownloads] = useState(1);
 
   // Failed Download Handling
-  const [enableFailedDownloadHandling, setEnableFailedDownloadHandling] = useState(true);
   const [removeFailedDownloadsGlobal, setRemoveFailedDownloadsGlobal] = useState(true);
   const [redownloadFailedEvents, setRedownloadFailedEvents] = useState(true);
+  const [redownloadFailedFromInteractiveSearch, setRedownloadFailedFromInteractiveSearch] = useState(true);
 
   // Search Queue Management (Huntarr-style queue threshold pause)
   const [maxDownloadQueueSize, setMaxDownloadQueueSize] = useState(-1); // -1 = no limit
@@ -309,9 +309,9 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
     enableCompletedDownloadHandling: boolean;
     removeCompletedDownloadsGlobal: boolean;
     checkForFinishedDownloads: number;
-    enableFailedDownloadHandling: boolean;
     removeFailedDownloadsGlobal: boolean;
     redownloadFailedEvents: boolean;
+    redownloadFailedFromInteractiveSearch: boolean;
     maxDownloadQueueSize: number;
     searchSleepDuration: number;
   } | null>(null);
@@ -324,16 +324,16 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
       enableCompletedDownloadHandling,
       removeCompletedDownloadsGlobal,
       checkForFinishedDownloads,
-      enableFailedDownloadHandling,
       removeFailedDownloadsGlobal,
       redownloadFailedEvents,
+      redownloadFailedFromInteractiveSearch,
       maxDownloadQueueSize,
       searchSleepDuration
     };
     const hasChanges = JSON.stringify(currentSettings) !== JSON.stringify(initialSettings.current);
     setHasUnsavedChanges(hasChanges);
   }, [enableCompletedDownloadHandling, removeCompletedDownloadsGlobal, checkForFinishedDownloads,
-      enableFailedDownloadHandling, removeFailedDownloadsGlobal, redownloadFailedEvents,
+      removeFailedDownloadsGlobal, redownloadFailedEvents, redownloadFailedFromInteractiveSearch,
       maxDownloadQueueSize, searchSleepDuration]);
 
   // Note: In-app navigation blocking would require React Router's unstable_useBlocker
@@ -809,43 +809,39 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
           <label className="flex items-start space-x-3 cursor-pointer">
             <input
               type="checkbox"
-              checked={enableFailedDownloadHandling}
-              onChange={(e) => setEnableFailedDownloadHandling(e.target.checked)}
+              checked={redownloadFailedEvents}
+              onChange={(e) => setRedownloadFailedEvents(e.target.checked)}
               className="mt-1 w-5 h-5 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
             />
             <div>
-              <span className="text-white font-medium">Enable</span>
+              <span className="text-white font-medium">Redownload</span>
               <p className="text-sm text-gray-400 mt-1">
-                Automatically handle failed downloads
+                Automatically search for and attempt to download a different release
               </p>
             </div>
           </label>
 
-          {enableFailedDownloadHandling && (
-            <>
-              <label className="flex items-start space-x-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={redownloadFailedEvents}
-                  onChange={(e) => setRedownloadFailedEvents(e.target.checked)}
-                  className="mt-1 w-5 h-5 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
-                />
-                <div>
-                  <span className="text-white font-medium">Redownload</span>
-                  <p className="text-sm text-gray-400 mt-1">
-                    Automatically search for and attempt to download a different release
-                  </p>
-                </div>
-              </label>
+          <label className="flex items-start space-x-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={redownloadFailedFromInteractiveSearch}
+              onChange={(e) => setRedownloadFailedFromInteractiveSearch(e.target.checked)}
+              className="mt-1 w-5 h-5 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
+            />
+            <div>
+              <span className="text-white font-medium">Redownload Failed from Interactive Search</span>
+              <p className="text-sm text-gray-400 mt-1">
+                Automatically search for a replacement when a manually selected release fails
+              </p>
+            </div>
+          </label>
 
-              <div className="p-3 bg-blue-900/20 border border-blue-700/30 rounded-lg">
-                <p className="text-sm text-blue-300">
-                  <strong>Remove Failed Downloads</strong> is now configured per download client.
-                  Edit each download client to enable or disable removal of failed downloads.
-                </p>
-              </div>
-            </>
-          )}
+          <div className="p-3 bg-blue-900/20 border border-blue-700/30 rounded-lg">
+            <p className="text-sm text-blue-300">
+              <strong>Remove Failed Downloads</strong> is configured per download client.
+              Edit each download client to enable or disable removal of failed downloads.
+            </p>
+          </div>
         </div>
       </div>
 

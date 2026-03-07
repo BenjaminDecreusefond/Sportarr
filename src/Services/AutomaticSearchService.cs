@@ -923,7 +923,8 @@ public class AutomaticSearchService : IAutomaticSearchService
                 LastUpdate = DateTime.UtcNow,
                 QualityScore = bestRelease.QualityScore,
                 CustomFormatScore = bestRelease.CustomFormatScore,
-                Part = part // Store the part (e.g., "Prelims", "Main Card") for multi-part imports
+                Part = part, // Store the part (e.g., "Prelims", "Main Card") for multi-part imports
+                IsManualSearch = isManualSearch
             };
 
             _db.DownloadQueue.Add(queueItem);

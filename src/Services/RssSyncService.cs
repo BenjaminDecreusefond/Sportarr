@@ -639,7 +639,8 @@ public class RssSyncService : BackgroundService
             LastUpdate = DateTime.UtcNow,
             QualityScore = release.QualityScore,
             CustomFormatScore = release.CustomFormatScore,
-            Part = releasePart  // Use the part passed from ShouldGrabReleaseAsync
+            Part = releasePart,  // Use the part passed from ShouldGrabReleaseAsync
+            IsManualSearch = false // RSS sync is always automatic
         };
 
         db.DownloadQueue.Add(queueItem);

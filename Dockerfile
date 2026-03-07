@@ -1,45 +1,8 @@
-# Sportarr Dockerfile - Modern minimal API build
-# Builds Sportarr from source and creates a minimal runtime image
+# Sportarr Dockerfile - Uses pre-built binaries from CI
+# Expects pre-built app in publish/ directory (passed via build context)
 # Port 1867: Sportarr default port
 
-# Frontend build stage
-FROM node:20-alpine AS frontend-builder
-
-WORKDIR /src/frontend
-
-# Copy package files for frontend
-COPY frontend/package.json frontend/package-lock.json frontend/.npmrc ./
-RUN npm ci --quiet
-
-# Copy frontend source and configuration
-COPY frontend/ ./
-
-# Build using npm (outputs to ../_output/UI)
-RUN npm run build
-
-# Backend build stage
-FROM mcr.microsoft.com/dotnet/sdk:8.0 AS builder
-
-ARG VERSION=1.0.0
-
-WORKDIR /build
-
-# Copy backend source
-COPY src/Sportarr.csproj ./
-RUN dotnet restore
-
-COPY src/ ./
-RUN dotnet publish \
-    --configuration Release \
-    --output /app \
-    --no-restore \
-    -p:SkipFrontendBuild=true \
-    /p:Version=${VERSION}
-
-# Copy frontend build to wwwroot
-COPY --from=frontend-builder /src/_output/UI /app/wwwroot
-
-# Runtime stage
+# Runtime stage only - no build stages needed
 FROM mcr.microsoft.com/dotnet/aspnet:8.0
 
 # Docker metadata labels
@@ -121,9 +84,18 @@ RUN apt-get update && \
 # ============================================================================
 ENV LIBVA_DRIVER_NAME=iHD
 
-# Copy application first (as root to ensure permissions)
+# Copy pre-built application (from CI build context)
+# ARG TARGETPLATFORM is set automatically by Docker buildx for multi-platform builds
+ARG TARGETPLATFORM
 WORKDIR /app
-COPY --from=builder /app ./
+COPY publish/docker-linux-x64/ /tmp/app-amd64/
+COPY publish/docker-linux-arm64/ /tmp/app-arm64/
+RUN if [ "$TARGETPLATFORM" = "linux/arm64" ]; then \
+      cp -r /tmp/app-arm64/* /app/; \
+    else \
+      cp -r /tmp/app-amd64/* /app/; \
+    fi && \
+    rm -rf /tmp/app-amd64 /tmp/app-arm64
 
 # Copy entrypoint script
 COPY docker-entrypoint.sh /docker-entrypoint.sh

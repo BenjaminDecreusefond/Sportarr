@@ -27,8 +27,8 @@ public class AppSettings
     // Note: RemoveCompletedDownloads and RemoveFailedDownloads are now per-client settings (per-client)
     // Configure in each Download Client's settings instead of globally here
     public int CheckForFinishedDownloadInterval { get; set; } = 1;
-    public bool EnableFailedDownloadHandling { get; set; } = true;
     public bool RedownloadFailedDownloads { get; set; } = true;
+    public bool RedownloadFailedFromInteractiveSearch { get; set; } = true;
 
     // Search Queue Management (Huntarr-style queue threshold pause)
     public int MaxDownloadQueueSize { get; set; } = -1; // -1 = no limit

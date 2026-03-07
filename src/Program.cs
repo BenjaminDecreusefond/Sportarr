@@ -784,7 +784,7 @@ try
                 if (exists == 0)
                 {
                     Console.WriteLine($"[Sportarr] Adding missing column {columnName} to MediaManagementSettings...");
-                    db.Database.ExecuteSqlRaw($@"ALTER TABLE ""MediaManagementSettings"" ADD COLUMN ""{columnName}"" {columnDef}");
+                    db.Database.ExecuteSqlRaw("ALTER TABLE \"MediaManagementSettings\" ADD COLUMN \"" + columnName + "\" " + columnDef);
                     Console.WriteLine($"[Sportarr] Column {columnName} added successfully");
                 }
             }
@@ -836,8 +836,6 @@ try
                         ChownUser TEXT NOT NULL DEFAULT '',
                         ChownGroup TEXT NOT NULL DEFAULT '',
                         CopyFiles INTEGER NOT NULL DEFAULT 0,
-                        RemoveCompletedDownloads INTEGER NOT NULL DEFAULT 1,
-                        RemoveFailedDownloads INTEGER NOT NULL DEFAULT 1,
                         Created TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                         LastModified TEXT,
                         EnableMultiPartEpisodes INTEGER NOT NULL DEFAULT 1,
@@ -865,7 +863,7 @@ try
                             DeleteEmptyFolders, SkipFreeSpaceCheck, MinimumFreeSpace, UseHardlinks,
                             ImportExtraFiles, ExtraFileExtensions, ChangeFileDate, RecycleBin, RecycleBinCleanup,
                             SetPermissions, FileChmod, ChmodFolder, ChownUser, ChownGroup,
-                            CopyFiles, RemoveCompletedDownloads, RemoveFailedDownloads, Created, LastModified,
+                            CopyFiles, Created, LastModified,
                             EnableMultiPartEpisodes, RootFolders
                         )
                         SELECT
@@ -876,7 +874,7 @@ try
                             DeleteEmptyFolders, SkipFreeSpaceCheck, MinimumFreeSpace, UseHardlinks,
                             ImportExtraFiles, ExtraFileExtensions, ChangeFileDate, RecycleBin, RecycleBinCleanup,
                             SetPermissions, FileChmod, ChmodFolder, ChownUser, ChownGroup,
-                            CopyFiles, RemoveCompletedDownloads, RemoveFailedDownloads, Created, LastModified,
+                            CopyFiles, Created, LastModified,
                             COALESCE(EnableMultiPartEpisodes, 1), COALESCE(RootFolders, '[]')
                         FROM MediaManagementSettings";
                     await cmd.ExecuteNonQueryAsync();
@@ -900,6 +898,42 @@ try
         catch (Exception ex)
         {
             Console.WriteLine($"[Sportarr] Warning: Could not remove StandardEventFormat column: {ex.Message}");
+        }
+
+        // Ensure RedownloadFailedFromInteractiveSearch column exists in AppSettings (added in download settings rework)
+        try
+        {
+            var checkRedownloadInteractiveCol = "SELECT COUNT(*) FROM pragma_table_info('AppSettings') WHERE name='RedownloadFailedFromInteractiveSearch'";
+            var redownloadInteractiveExists = db.Database.SqlQueryRaw<int>(checkRedownloadInteractiveCol).AsEnumerable().FirstOrDefault();
+
+            if (redownloadInteractiveExists == 0)
+            {
+                Console.WriteLine("[Sportarr] AppSettings.RedownloadFailedFromInteractiveSearch column missing - adding it now...");
+                db.Database.ExecuteSqlRaw("ALTER TABLE AppSettings ADD COLUMN RedownloadFailedFromInteractiveSearch INTEGER NOT NULL DEFAULT 1");
+                Console.WriteLine("[Sportarr] AppSettings.RedownloadFailedFromInteractiveSearch column added successfully");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Sportarr] Warning: Could not verify AppSettings.RedownloadFailedFromInteractiveSearch column: {ex.Message}");
+        }
+
+        // Ensure IsManualSearch column exists in DownloadQueue (added in download settings rework)
+        try
+        {
+            var checkIsManualSearchCol = "SELECT COUNT(*) FROM pragma_table_info('DownloadQueue') WHERE name='IsManualSearch'";
+            var isManualSearchExists = db.Database.SqlQueryRaw<int>(checkIsManualSearchCol).AsEnumerable().FirstOrDefault();
+
+            if (isManualSearchExists == 0)
+            {
+                Console.WriteLine("[Sportarr] DownloadQueue.IsManualSearch column missing - adding it now...");
+                db.Database.ExecuteSqlRaw("ALTER TABLE DownloadQueue ADD COLUMN IsManualSearch INTEGER NOT NULL DEFAULT 0");
+                Console.WriteLine("[Sportarr] DownloadQueue.IsManualSearch column added successfully");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Sportarr] Warning: Could not verify DownloadQueue.IsManualSearch column: {ex.Message}");
         }
 
         // Clean up orphaned events (events whose leagues no longer exist)
@@ -4460,8 +4494,8 @@ app.MapGet("/api/settings", async (Sportarr.Api.Services.ConfigService configSer
         EnableCompletedDownloadHandling = config.EnableCompletedDownloadHandling,
         // Note: RemoveCompletedDownloads and RemoveFailedDownloads are now per-client settings
         CheckForFinishedDownloadInterval = config.CheckForFinishedDownloadInterval,
-        EnableFailedDownloadHandling = config.EnableFailedDownloadHandling,
         RedownloadFailedDownloads = config.RedownloadFailedDownloads,
+        RedownloadFailedFromInteractiveSearch = config.RedownloadFailedFromInteractiveSearch,
 
         // Search Queue Management (Huntarr-style)
         MaxDownloadQueueSize = config.MaxDownloadQueueSize,
@@ -4701,8 +4735,8 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, Sportarr.Api.Ser
         config.EnableCompletedDownloadHandling = updatedSettings.EnableCompletedDownloadHandling;
         // Note: RemoveCompletedDownloads and RemoveFailedDownloads are now per-client settings
         config.CheckForFinishedDownloadInterval = updatedSettings.CheckForFinishedDownloadInterval;
-        config.EnableFailedDownloadHandling = updatedSettings.EnableFailedDownloadHandling;
         config.RedownloadFailedDownloads = updatedSettings.RedownloadFailedDownloads;
+        config.RedownloadFailedFromInteractiveSearch = updatedSettings.RedownloadFailedFromInteractiveSearch;
 
         // Search Queue Management (Huntarr-style)
         config.MaxDownloadQueueSize = updatedSettings.MaxDownloadQueueSize;
@@ -6189,7 +6223,8 @@ app.MapPost("/api/grab-history/{id:int}/regrab", async (
             LastUpdate = DateTime.UtcNow,
             QualityScore = grabHistory.QualityScore,
             CustomFormatScore = grabHistory.CustomFormatScore,
-            Part = grabHistory.PartName
+            Part = grabHistory.PartName,
+            IsManualSearch = true // Re-grab is always user-initiated
         };
 
         db.DownloadQueue.Add(queueItem);
@@ -6311,7 +6346,8 @@ app.MapPost("/api/grab-history/regrab-missing", async (
                 LastUpdate = DateTime.UtcNow,
                 QualityScore = grabHistory.QualityScore,
                 CustomFormatScore = grabHistory.CustomFormatScore,
-                Part = grabHistory.PartName
+                Part = grabHistory.PartName,
+                IsManualSearch = true // Bulk re-grab is user-initiated
             };
 
             db.DownloadQueue.Add(queueItem);
@@ -11666,7 +11702,8 @@ app.MapPost("/api/release/grab", async (
             CustomFormatScore = release.CustomFormatScore,
             Part = release.Part,
             IsPack = isPack && packEvents.Count > 1,
-            PackGroupId = packGroupId
+            PackGroupId = packGroupId,
+            IsManualSearch = true // Release grab is user-initiated (interactive search)
         };
         queueItems.Add(queueItem);
         db.DownloadQueue.Add(queueItem);

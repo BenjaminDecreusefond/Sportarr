@@ -89,7 +89,7 @@ jobs:
           body: |
             ## Development Build - ${{ steps.version.outputs.version }}
 
-            ⚠️ **This is a development build for testing purposes.**
+            **This is a development build for testing purposes.**
 
             This release is automatically updated with each push to the dev branch.
 
@@ -114,6 +114,14 @@ jobs:
             Sportarr-osx-arm64-${{ steps.version.outputs.version }}.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Build framework-dependent (non-self-contained) for Docker
+      # These produce Sportarr.dll that runs on the aspnet runtime already in the Docker image
+      # Cross-compiles natively on amd64 runner — no QEMU needed for the dotnet build
+      - name: Build Docker binaries (linux-x64 + linux-arm64)
+        run: |
+          dotnet publish src/Sportarr.csproj -c Release -r linux-x64 --self-contained false -p:PublishSingleFile=false -p:SkipFrontendBuild=true -p:Version=${{ steps.version.outputs.version }} -o publish/docker-linux-x64
+          dotnet publish src/Sportarr.csproj -c Release -r linux-arm64 --self-contained false -p:PublishSingleFile=false -p:SkipFrontendBuild=true -p:Version=${{ steps.version.outputs.version }} -o publish/docker-linux-arm64
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -140,8 +148,6 @@ jobs:
           tags: |
             sportarr/sportarr:dev
             sportarr/sportarr:${{ steps.version.outputs.version }}
-          build-args: |
-            VERSION=${{ steps.version.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           provenance: false
@@ -158,7 +164,7 @@ jobs:
           COMMIT_MSG=$(git log --pretty=format:"%s" -1 | sed 's/"/\\"/g')
           COMMIT_SHA=$(git rev-parse --short HEAD)
 
-          DESCRIPTION="**Development Build**\n• ${COMMIT_MSG}\n\n⚠️ **This is a development build for testing purposes.**\n\n**Docker Installation**\n\`\`\`\ndocker pull sportarr/sportarr:dev\n\`\`\`\n\n**Downloads**\n[View all platform downloads](https://github.com/${{ github.repository }}/releases/tag/dev)"
+          DESCRIPTION="**Development Build**\n• ${COMMIT_MSG}\n\n**Docker Installation**\n\`\`\`\ndocker pull sportarr/sportarr:dev\n\`\`\`\n\n**Downloads**\n[View all platform downloads](https://github.com/${{ github.repository }}/releases/tag/dev)"
 
           curl -X POST "$WEBHOOK_URL" \
             -H "Content-Type: application/json" \

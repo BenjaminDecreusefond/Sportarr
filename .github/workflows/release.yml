@@ -59,8 +59,6 @@ jobs:
           git config user.email "sportarr@users.noreply.github.com"
 
           # Commit version bump with conventional commit format
-          # IMPORTANT: Always use conventional commit prefix (chore/fix/feat/refactor)
-          # This is used by bots and provides context for users in commit history
           git add src/Version.cs
           git commit -m "chore: Bump version to $NEW_VERSION [skip ci]"
 
@@ -133,9 +131,6 @@ jobs:
 
       - name: Build Windows x64
         run: |
-          # Build Sportarr with Windows Forms support for tray icon
-          # Run with --tray flag to start minimized to system tray
-          # SkipFrontendBuild=true because we already built frontend above
           dotnet publish src/Sportarr.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:SkipFrontendBuild=true -p:Version=${{ steps.bump_version.outputs.version_number }} -o publish/win-x64
           cd publish/win-x64 && zip -r ../../Sportarr-win-x64-${{ steps.bump_version.outputs.version_number }}.zip .
 
@@ -275,6 +270,14 @@ jobs:
             git push origin main || echo "Failed to push manifest update - this is non-fatal"
           fi
 
+      # Build framework-dependent (non-self-contained) for Docker
+      # These produce Sportarr.dll that runs on the aspnet runtime already in the Docker image
+      # Much smaller than self-contained (~5MB vs ~80MB) and cross-compile natively (no QEMU needed)
+      - name: Build Docker binaries (linux-x64 + linux-arm64)
+        run: |
+          dotnet publish src/Sportarr.csproj -c Release -r linux-x64 --self-contained false -p:PublishSingleFile=false -p:SkipFrontendBuild=true -p:Version=${{ steps.bump_version.outputs.version_number }} -o publish/docker-linux-x64
+          dotnet publish src/Sportarr.csproj -c Release -r linux-arm64 --self-contained false -p:PublishSingleFile=false -p:SkipFrontendBuild=true -p:Version=${{ steps.bump_version.outputs.version_number }} -o publish/docker-linux-arm64
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
@@ -291,14 +294,13 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Extract version metadata for Docker
-        id: meta
+      - name: Compute Docker tags
+        id: docker_tags
         run: |
           VERSION="${{ steps.bump_version.outputs.version_number }}"
           MAJOR=$(echo $VERSION | cut -d. -f1)
           MINOR=$(echo $VERSION | cut -d. -f2)
-
-          echo "tags=sportarr/sportarr:latest,sportarr/sportarr:$VERSION,sportarr/sportarr:$MAJOR.$MINOR,sportarr/sportarr:$MAJOR" >> $GITHUB_OUTPUT
+          echo "tags=sportarr/sportarr:latest,sportarr/sportarr:${VERSION},sportarr/sportarr:${MAJOR}.${MINOR},sportarr/sportarr:${MAJOR}" >> $GITHUB_OUTPUT
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
@@ -306,14 +308,11 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          build-args: |
-            VERSION=${{ steps.bump_version.outputs.version_number }}
+          tags: ${{ steps.docker_tags.outputs.tags }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           provenance: false
         env:
-          # Retry on transient registry errors (MCR 403 Forbidden, etc.)
           BUILDX_NO_DEFAULT_ATTESTATIONS: 1
 
       - name: Send Discord notification
@@ -325,19 +324,15 @@ jobs:
           RELEASE_URL: https://github.com/${{ github.repository }}/releases/tag/${{ steps.bump_version.outputs.version }}
           CHANGELOG_URL: https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md
         run: |
-          # Get only the most recent commit (the one that triggered this release)
-          # Skip the version bump commit and get the commit before it
-          COMMITS=$(git log --pretty=format:"• %s" --no-merges --grep="\[skip ci\]" --invert-grep -1 | sed 's/"/\\"/g')
-
-          # Build description with commits
-          DESCRIPTION="**What's New**\n${COMMITS}\n\n**[📋 View Full Changelog](${CHANGELOG_URL})** • **[📦 View Release](${RELEASE_URL})**\n\n**Docker Installation**\n\`\`\`\ndocker pull sportarr/sportarr:latest\ndocker pull sportarr/sportarr:${{ steps.bump_version.outputs.version_number }}\n\`\`\`"
+          VERSION_NUMBER="${{ steps.bump_version.outputs.version_number }}"
+          DESCRIPTION="**[View Full Changelog](${CHANGELOG_URL})** | **[View Release](${RELEASE_URL})**\n\n**Docker Installation**\n\`\`\`\ndocker pull sportarr/sportarr:latest\ndocker pull sportarr/sportarr:${VERSION_NUMBER}\n\`\`\`"
 
           curl -X POST "$WEBHOOK_URL" \
             -H "Content-Type: application/json" \
             -d "{
               \"username\": \"Sportarr\",
               \"embeds\": [{
-                \"title\": \"New Release - $VERSION\",
+                \"title\": \"New Release - ${VERSION}\",
                 \"description\": \"$DESCRIPTION\",
                 \"color\": 14427686,
                 \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%S.000Z)\"

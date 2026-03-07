@@ -76,8 +76,8 @@ public class EnhancedDownloadMonitorService : BackgroundService
         // Load settings once
         var config = await configService.GetConfigAsync();
         var enableCompletedHandling = config.EnableCompletedDownloadHandling;
-        var enableFailedHandling = config.EnableFailedDownloadHandling;
         var redownloadFailed = config.RedownloadFailedDownloads;
+        var redownloadFailedFromInteractive = config.RedownloadFailedFromInteractiveSearch;
         // Note: RemoveCompletedDownloads and RemoveFailedDownloads are now per-client settings
         // accessed via download.DownloadClient.RemoveCompletedDownloads/RemoveFailedDownloads
 
@@ -94,8 +94,8 @@ public class EnhancedDownloadMonitorService : BackgroundService
                     fileImportService,
                     db,
                     enableCompletedHandling,
-                    enableFailedHandling,
-                    redownloadFailed);
+                    redownloadFailed,
+                    redownloadFailedFromInteractive);
 
                 // Save changes after each successful download to prevent data loss
                 await db.SaveChangesAsync(cancellationToken);
@@ -128,8 +128,8 @@ public class EnhancedDownloadMonitorService : BackgroundService
         FileImportService fileImportService,
         SportarrDbContext db,
         bool enableCompletedHandling,
-        bool enableFailedHandling,
-        bool redownloadFailed)
+        bool redownloadFailed,
+        bool redownloadFailedFromInteractive)
     {
         // For ImportPending downloads, skip the download client check and just retry import
         // The download already completed on the client, we're just waiting for the file to be accessible
@@ -322,16 +322,16 @@ public class EnhancedDownloadMonitorService : BackgroundService
                 fileImportService);
         }
 
-        // Handle failed downloads
+        // Always handle failed downloads (no global disable — Radarr parity)
         if (download.Status == DownloadStatus.Failed &&
-            previousStatus != DownloadStatus.Failed &&
-            enableFailedHandling)
+            previousStatus != DownloadStatus.Failed)
         {
             await HandleFailedDownload(
                 download,
                 downloadClientService,
                 db,
-                redownloadFailed);
+                redownloadFailed,
+                redownloadFailedFromInteractive);
         }
     }
 
@@ -451,7 +451,8 @@ public class EnhancedDownloadMonitorService : BackgroundService
         DownloadQueueItem download,
         DownloadClientService downloadClientService,
         SportarrDbContext db,
-        bool redownloadFailed)
+        bool redownloadFailed,
+        bool redownloadFailedFromInteractive)
     {
         download.RetryCount = (download.RetryCount ?? 0) + 1;
 
@@ -514,8 +515,9 @@ public class EnhancedDownloadMonitorService : BackgroundService
             }
         }
 
-        // Retry if enabled and under retry limit
-        if (redownloadFailed && download.RetryCount < 3)
+        // Retry if enabled and under retry limit (respects interactive vs automatic search setting)
+        var shouldRedownload = download.IsManualSearch ? redownloadFailedFromInteractive : redownloadFailed;
+        if (shouldRedownload && download.RetryCount < 3)
         {
             _logger.LogInformation("[Enhanced Download Monitor] Will retry download on next search cycle: {Title}", download.Title);
             // The automatic search service will pick this up
