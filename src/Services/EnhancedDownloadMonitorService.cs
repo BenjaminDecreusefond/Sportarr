@@ -141,7 +141,8 @@ public class EnhancedDownloadMonitorService : BackgroundService
             await HandleCompletedDownload(
                 download,
                 downloadClientService,
-                fileImportService);
+                fileImportService,
+                db);
             return;
         }
 
@@ -319,7 +320,8 @@ public class EnhancedDownloadMonitorService : BackgroundService
             await HandleCompletedDownload(
                 download,
                 downloadClientService,
-                fileImportService);
+                fileImportService,
+                db);
         }
 
         // Always handle failed downloads (no global disable — Radarr parity)
@@ -355,10 +357,39 @@ public class EnhancedDownloadMonitorService : BackgroundService
         }
     }
 
+    /// <summary>
+    /// Check if a torrent has reached its seed limits (ratio and/or time) from the indexer settings.
+    /// Returns true if all configured limits are met, or if no limits are configured.
+    /// Matches Sonarr's HasReachedSeedLimit behavior.
+    /// </summary>
+    private static bool HasReachedSeedLimit(DownloadClientStatus status, Indexer indexer)
+    {
+        // Check ratio limit
+        if (indexer.SeedRatio.HasValue && indexer.SeedRatio.Value > 0)
+        {
+            if ((status.Ratio ?? 0) < indexer.SeedRatio.Value)
+                return false;
+        }
+
+        // Check time limit (SeedTime is in minutes)
+        if (indexer.SeedTime.HasValue && indexer.SeedTime.Value > 0)
+        {
+            var seedingMinutes = status.CompletedAt.HasValue
+                ? (DateTime.UtcNow - status.CompletedAt.Value).TotalMinutes
+                : 0;
+
+            if (seedingMinutes < indexer.SeedTime.Value)
+                return false;
+        }
+
+        return true;
+    }
+
     private async Task HandleCompletedDownload(
         DownloadQueueItem download,
         DownloadClientService downloadClientService,
-        FileImportService fileImportService)
+        FileImportService fileImportService,
+        SportarrDbContext? db = null)
     {
         download.CompletedAt = DateTime.UtcNow;
 
@@ -385,6 +416,37 @@ public class EnhancedDownloadMonitorService : BackgroundService
             // differently for each client (e.g., remove for Usenet, preserve for seeding torrents)
             if (download.DownloadClient?.RemoveCompletedDownloads == true)
             {
+                // For torrents with indexer seed settings, check if seeding goals are met before removal
+                // This matches Sonarr's behavior: torrents seed until ratio/time limits are reached
+                if (download.Protocol == "Torrent" && db != null)
+                {
+                    var indexer = download.IndexerId != null
+                        ? await db.Indexers.FindAsync(download.IndexerId)
+                        : !string.IsNullOrEmpty(download.Indexer)
+                            ? await db.Indexers.FirstOrDefaultAsync(i => i.Name == download.Indexer)
+                            : null;
+
+                    if (indexer != null && (indexer.SeedRatio.HasValue || indexer.SeedTime.HasValue))
+                    {
+                        var status = await downloadClientService.GetDownloadStatusAsync(
+                            download.DownloadClient, download.DownloadId);
+
+                        if (status != null && !HasReachedSeedLimit(status, indexer))
+                        {
+                            _logger.LogInformation(
+                                "[Enhanced Download Monitor] Torrent still seeding, skipping removal: {Title} " +
+                                "(Ratio: {Ratio:F2}/{Target}, Time: {Time})",
+                                download.Title,
+                                status.Ratio ?? 0,
+                                indexer.SeedRatio?.ToString("F1") ?? "N/A",
+                                indexer.SeedTime.HasValue ? $"{indexer.SeedTime}min" : "N/A");
+
+                            // Mark as imported but don't remove — monitor will re-check on next poll
+                            return;
+                        }
+                    }
+                }
+
                 try
                 {
                     await downloadClientService.RemoveDownloadAsync(

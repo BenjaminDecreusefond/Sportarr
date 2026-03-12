@@ -6293,12 +6293,19 @@ app.MapPost("/api/grab-history/{id:int}/regrab", async (
 
     try
     {
-        // Attempt to re-grab
+        // Look up indexer seed settings for torrent clients
+        var indexerRecord = !string.IsNullOrEmpty(grabHistory.Indexer)
+            ? await db.Indexers.FirstOrDefaultAsync(i => i.Name == grabHistory.Indexer)
+            : null;
+
+        // Attempt to re-grab with seed config from indexer
         var downloadId = await downloadClientService.AddDownloadAsync(
             downloadClient,
             grabHistory.DownloadUrl,
             downloadClient.Category,
-            grabHistory.Title
+            grabHistory.Title,
+            indexerRecord?.SeedRatio,
+            indexerRecord?.SeedTime
         );
 
         if (downloadId == null)
@@ -6324,6 +6331,7 @@ app.MapPost("/api/grab-history/{id:int}/regrab", async (
             Downloaded = 0,
             Progress = 0,
             Indexer = grabHistory.Indexer,
+            IndexerId = indexerRecord?.Id,
             Protocol = grabHistory.Protocol,
             TorrentInfoHash = grabHistory.TorrentInfoHash,
             RetryCount = 0,
@@ -6416,11 +6424,18 @@ app.MapPost("/api/grab-history/regrab-missing", async (
 
         try
         {
+            // Look up indexer seed settings for torrent clients
+            var bulkIndexerRecord = !string.IsNullOrEmpty(grabHistory.Indexer)
+                ? await db.Indexers.FirstOrDefaultAsync(i => i.Name == grabHistory.Indexer)
+                : null;
+
             var downloadId = await downloadClientService.AddDownloadAsync(
                 downloadClient,
                 grabHistory.DownloadUrl,
                 downloadClient.Category,
-                grabHistory.Title
+                grabHistory.Title,
+                bulkIndexerRecord?.SeedRatio,
+                bulkIndexerRecord?.SeedTime
             );
 
             if (downloadId == null)
@@ -6447,6 +6462,7 @@ app.MapPost("/api/grab-history/regrab-missing", async (
                 Downloaded = 0,
                 Progress = 0,
                 Indexer = grabHistory.Indexer,
+                IndexerId = bulkIndexerRecord?.Id,
                 Protocol = grabHistory.Protocol,
                 TorrentInfoHash = grabHistory.TorrentInfoHash,
                 RetryCount = 0,
@@ -11693,7 +11709,12 @@ app.MapPost("/api/release/grab", async (
         release.DownloadUrl.EndsWith(".torrent") ? "Torrent File URL" :
         "Unknown/Other");
 
-    // Add download to client (category only, no path)
+    // Look up indexer seed settings for torrent clients
+    var grabIndexerRecord = !string.IsNullOrEmpty(release.Indexer)
+        ? await db.Indexers.FirstOrDefaultAsync(i => i.Name == release.Indexer)
+        : null;
+
+    // Add download to client (category only, no path) with seed config from indexer
     AddDownloadResult downloadResult;
     try
     {
@@ -11702,7 +11723,9 @@ app.MapPost("/api/release/grab", async (
             downloadClient,
             release.DownloadUrl,
             downloadClient.Category,
-            release.Title  // Pass release title for better matching
+            release.Title,
+            grabIndexerRecord?.SeedRatio,
+            grabIndexerRecord?.SeedTime
         );
         logger.LogInformation("[GRAB] AddDownloadWithResultAsync returned: Success={Success}, DownloadId={DownloadId}",
             downloadResult.Success, downloadResult.DownloadId ?? "null");
@@ -11801,6 +11824,7 @@ app.MapPost("/api/release/grab", async (
             Downloaded = 0,
             Progress = 0,
             Indexer = release.Indexer,
+            IndexerId = grabIndexerRecord?.Id,
             Protocol = release.Protocol,
             TorrentInfoHash = release.TorrentInfoHash,
             RetryCount = 0,

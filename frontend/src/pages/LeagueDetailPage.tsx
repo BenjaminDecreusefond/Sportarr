@@ -219,6 +219,7 @@ export default function LeagueDetailPage() {
   const [isEditTeamsModalOpen, setIsEditTeamsModalOpen] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteLeagueFolder, setDeleteLeagueFolder] = useState(false);
+  const [revealedScores, setRevealedScores] = useState<Set<number>>(new Set());
 
   // CRITICAL: Store stable modal data in refs to prevent modal unmounting during query refetch
   // When queryClient.invalidateQueries runs, the league data might briefly become undefined,
@@ -1834,7 +1835,23 @@ export default function LeagueDetailPage() {
                           <div className="text-xs md:text-sm text-gray-300">
                             {event.homeTeamName} vs {event.awayTeamName}
                             {event.homeScore !== undefined && event.awayScore !== undefined && (
-                              <span className="ml-2 text-gray-400">
+                              <span
+                                className="ml-2 text-gray-400 cursor-pointer select-none inline-block transition-all duration-200"
+                                style={{ filter: revealedScores.has(event.id) ? 'none' : 'blur(5px)' }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setRevealedScores(prev => {
+                                    const next = new Set(prev);
+                                    if (next.has(event.id)) {
+                                      next.delete(event.id);
+                                    } else {
+                                      next.add(event.id);
+                                    }
+                                    return next;
+                                  });
+                                }}
+                                title={revealedScores.has(event.id) ? 'Click to hide score' : 'Click to reveal score'}
+                              >
                                 ({event.homeScore} - {event.awayScore})
                               </span>
                             )}

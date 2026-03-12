@@ -69,18 +69,18 @@ public class DecypharrClient
     /// <summary>
     /// Add torrent to Decypharr with detailed result
     /// </summary>
-    public async Task<AddDownloadResult> AddTorrentWithResultAsync(DownloadClient config, string torrentUrl, string category, string? expectedName = null)
+    public async Task<AddDownloadResult> AddTorrentWithResultAsync(DownloadClient config, string torrentUrl, string category, string? expectedName = null, double? seedRatioLimit = null, int? seedTimeLimitMinutes = null)
     {
         _logger.LogInformation("[Decypharr] Adding torrent to debrid service via Decypharr");
-        return await _qbClient.AddTorrentWithResultAsync(config, torrentUrl, category, expectedName);
+        return await _qbClient.AddTorrentWithResultAsync(config, torrentUrl, category, expectedName, seedRatioLimit, seedTimeLimitMinutes);
     }
 
     /// <summary>
     /// Add torrent to Decypharr (legacy method)
     /// </summary>
-    public async Task<string?> AddTorrentAsync(DownloadClient config, string torrentUrl, string category, string? expectedName = null)
+    public async Task<string?> AddTorrentAsync(DownloadClient config, string torrentUrl, string category, string? expectedName = null, double? seedRatioLimit = null, int? seedTimeLimitMinutes = null)
     {
-        return await _qbClient.AddTorrentAsync(config, torrentUrl, category, expectedName);
+        return await _qbClient.AddTorrentAsync(config, torrentUrl, category, expectedName, seedRatioLimit, seedTimeLimitMinutes);
     }
 
     /// <summary>

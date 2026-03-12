@@ -98,7 +98,7 @@ public class QBittorrentClient
     /// SONARR-STYLE: Downloads torrent file bytes first, then sends bytes to qBittorrent.
     /// This is critical for Prowlarr URLs which require authentication that qBittorrent doesn't have.
     /// </summary>
-    public async Task<AddDownloadResult> AddTorrentWithResultAsync(DownloadClient config, string torrentUrl, string category, string? expectedName = null)
+    public async Task<AddDownloadResult> AddTorrentWithResultAsync(DownloadClient config, string torrentUrl, string category, string? expectedName = null, double? seedRatioLimit = null, int? seedTimeLimitMinutes = null)
     {
         try
         {
@@ -214,6 +214,20 @@ public class QBittorrentClient
             {
                 content.Add(new StringContent("true"), "firstLastPiecePrio");
                 _logger.LogInformation("[qBittorrent] First and last piece priority enabled");
+            }
+
+            // Apply per-torrent seed limits from indexer settings (matches Sonarr behavior)
+            // qBittorrent API: ratioLimit (-2=global, -1=unlimited, >=0=specific limit)
+            // qBittorrent API: seedingTimeLimit (-2=global, -1=unlimited, >=0=minutes)
+            if (seedRatioLimit.HasValue && seedRatioLimit.Value > 0)
+            {
+                content.Add(new StringContent(seedRatioLimit.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)), "ratioLimit");
+                _logger.LogInformation("[qBittorrent] Seed ratio limit: {Ratio}", seedRatioLimit.Value);
+            }
+            if (seedTimeLimitMinutes.HasValue && seedTimeLimitMinutes.Value > 0)
+            {
+                content.Add(new StringContent(seedTimeLimitMinutes.Value.ToString()), "seedingTimeLimit");
+                _logger.LogInformation("[qBittorrent] Seed time limit: {Minutes} minutes", seedTimeLimitMinutes.Value);
             }
 
             _logger.LogInformation("[qBittorrent] POSTing to {Endpoint}", $"{baseUrl}/api/v2/torrents/add");
@@ -510,9 +524,9 @@ public class QBittorrentClient
     /// <summary>
     /// Add torrent from URL (legacy method for backward compatibility)
     /// </summary>
-    public async Task<string?> AddTorrentAsync(DownloadClient config, string torrentUrl, string category, string? expectedName = null)
+    public async Task<string?> AddTorrentAsync(DownloadClient config, string torrentUrl, string category, string? expectedName = null, double? seedRatioLimit = null, int? seedTimeLimitMinutes = null)
     {
-        var result = await AddTorrentWithResultAsync(config, torrentUrl, category, expectedName);
+        var result = await AddTorrentWithResultAsync(config, torrentUrl, category, expectedName, seedRatioLimit, seedTimeLimitMinutes);
         return result.Success ? result.DownloadId : null;
     }
 
@@ -774,7 +788,11 @@ public class QBittorrentClient
             Size = torrent.Size,
             TimeRemaining = timeRemaining,
             SavePath = outputPath, // Use the determined output path instead of raw SavePath
-            ErrorMessage = warningMessage
+            ErrorMessage = warningMessage,
+            Ratio = torrent.Ratio,
+            CompletedAt = torrent.CompletedOn > 0
+                ? DateTimeOffset.FromUnixTimeSeconds(torrent.CompletedOn).UtcDateTime
+                : null
         };
     }
 
@@ -1487,6 +1505,7 @@ public class QBittorrentTorrent
     [System.Text.Json.Serialization.JsonPropertyName("content_path")]
     public string ContentPath { get; set; } = "";
 
+    public double Ratio { get; set; } // Upload/download ratio
     public string Category { get; set; } = "";
     public long AddedOn { get; set; } // Unix timestamp
     public long CompletedOn { get; set; } // Unix timestamp

@@ -879,12 +879,18 @@ public class AutomaticSearchService : IAutomaticSearchService
             // Root folders are used later during the import process (not here)
             // This matches Sonarr/Radarr behavior
 
-            // Send to download client (category only, no path)
+            // Look up indexer seed settings for torrent clients
+            var indexerRecord = await _db.Indexers
+                .FirstOrDefaultAsync(i => i.Name == bestRelease.Indexer);
+
+            // Send to download client with seed config from indexer
             var downloadId = await _downloadClientService.AddDownloadAsync(
                 downloadClient,
                 bestRelease.DownloadUrl,
                 downloadClient.Category,
-                bestRelease.Title  // Pass release title for better matching
+                bestRelease.Title,
+                indexerRecord?.SeedRatio,
+                indexerRecord?.SeedTime
             );
 
             if (downloadId == null)
@@ -917,6 +923,7 @@ public class AutomaticSearchService : IAutomaticSearchService
                 Downloaded = 0,
                 Progress = 0,
                 Indexer = bestRelease.Indexer,
+                IndexerId = indexerRecord?.Id,
                 Protocol = bestRelease.Protocol,
                 TorrentInfoHash = bestRelease.TorrentInfoHash,
                 RetryCount = retryCount,
@@ -931,8 +938,6 @@ public class AutomaticSearchService : IAutomaticSearchService
 
             // Save grab history for potential re-grabbing (Sportarr-exclusive feature)
             // This allows users to re-download the exact same release if they lose their media files
-            var indexerRecord = await _db.Indexers
-                .FirstOrDefaultAsync(i => i.Name == bestRelease.Indexer);
 
             // Mark any previous grabs for the same event+part as superseded
             // This prevents users from re-grabbing an old file that was replaced

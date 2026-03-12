@@ -225,7 +225,7 @@ public class DownloadClientService : IDownloadClientService
     /// <summary>
     /// Add download to client with detailed result
     /// </summary>
-    public async Task<AddDownloadResult> AddDownloadWithResultAsync(DownloadClient config, string url, string category, string? expectedName = null)
+    public async Task<AddDownloadResult> AddDownloadWithResultAsync(DownloadClient config, string url, string category, string? expectedName = null, double? seedRatioLimit = null, int? seedTimeLimitMinutes = null)
     {
         try
         {
@@ -234,13 +234,13 @@ public class DownloadClientService : IDownloadClientService
 
             var result = config.Type switch
             {
-                DownloadClientType.QBittorrent => await AddToQBittorrentWithResultAsync(config, url, category, expectedName),
-                DownloadClientType.Transmission => WrapLegacyResult(await AddToTransmissionAsync(config, url, category)),
-                DownloadClientType.Deluge => WrapLegacyResult(await AddToDelugeAsync(config, url, category)),
-                DownloadClientType.RTorrent => WrapLegacyResult(await AddToRTorrentAsync(config, url, category)),
+                DownloadClientType.QBittorrent => await AddToQBittorrentWithResultAsync(config, url, category, expectedName, seedRatioLimit, seedTimeLimitMinutes),
+                DownloadClientType.Transmission => WrapLegacyResult(await AddToTransmissionAsync(config, url, category, seedRatioLimit, seedTimeLimitMinutes)),
+                DownloadClientType.Deluge => WrapLegacyResult(await AddToDelugeAsync(config, url, category, seedRatioLimit, seedTimeLimitMinutes)),
+                DownloadClientType.RTorrent => WrapLegacyResult(await AddToRTorrentAsync(config, url, category, seedRatioLimit, seedTimeLimitMinutes)),
                 DownloadClientType.Sabnzbd => WrapLegacyResult(await AddToSabnzbdAsync(config, url, category)),
                 DownloadClientType.NzbGet => WrapLegacyResult(await AddToNzbGetAsync(config, url, category)),
-                DownloadClientType.Decypharr => await AddToDecypharrWithResultAsync(config, url, category, expectedName),
+                DownloadClientType.Decypharr => await AddToDecypharrWithResultAsync(config, url, category, expectedName, seedRatioLimit, seedTimeLimitMinutes),
                 DownloadClientType.DecypharrUsenet => WrapLegacyResult(await AddToSabnzbdViaUrlAsync(config, url, category)), // Decypharr usenet uses SABnzbd API emulation - must use URL mode so Decypharr can intercept
                 DownloadClientType.NZBdav => WrapLegacyResult(await AddToSabnzbdViaUrlAsync(config, url, category)), // NZBdav uses SABnzbd API but only supports addurl mode (not addfile)
                 _ => AddDownloadResult.Failed($"Download client type {config.Type} not supported", AddDownloadErrorType.Unknown)
@@ -267,9 +267,9 @@ public class DownloadClientService : IDownloadClientService
     /// <summary>
     /// Add download to client (legacy method for backward compatibility)
     /// </summary>
-    public async Task<string?> AddDownloadAsync(DownloadClient config, string url, string category, string? expectedName = null)
+    public async Task<string?> AddDownloadAsync(DownloadClient config, string url, string category, string? expectedName = null, double? seedRatioLimit = null, int? seedTimeLimitMinutes = null)
     {
-        var result = await AddDownloadWithResultAsync(config, url, category, expectedName);
+        var result = await AddDownloadWithResultAsync(config, url, category, expectedName, seedRatioLimit, seedTimeLimitMinutes);
         return result.Success ? result.DownloadId : null;
     }
 
@@ -530,34 +530,34 @@ public class DownloadClientService : IDownloadClientService
         return await client.TestConnectionAsync(config);
     }
 
-    private async Task<string?> AddToQBittorrentAsync(DownloadClient config, string url, string category, string? expectedName = null)
+    private async Task<string?> AddToQBittorrentAsync(DownloadClient config, string url, string category, string? expectedName = null, double? seedRatioLimit = null, int? seedTimeLimitMinutes = null)
     {
         var client = GetQBittorrentClient(config);
-        return await client.AddTorrentAsync(config, url, category, expectedName);
+        return await client.AddTorrentAsync(config, url, category, expectedName, seedRatioLimit, seedTimeLimitMinutes);
     }
 
-    private async Task<AddDownloadResult> AddToQBittorrentWithResultAsync(DownloadClient config, string url, string category, string? expectedName = null)
+    private async Task<AddDownloadResult> AddToQBittorrentWithResultAsync(DownloadClient config, string url, string category, string? expectedName = null, double? seedRatioLimit = null, int? seedTimeLimitMinutes = null)
     {
         var client = GetQBittorrentClient(config);
-        return await client.AddTorrentWithResultAsync(config, url, category, expectedName);
+        return await client.AddTorrentWithResultAsync(config, url, category, expectedName, seedRatioLimit, seedTimeLimitMinutes);
     }
 
-    private async Task<string?> AddToTransmissionAsync(DownloadClient config, string url, string category)
+    private async Task<string?> AddToTransmissionAsync(DownloadClient config, string url, string category, double? seedRatioLimit = null, int? seedTimeLimitMinutes = null)
     {
         var client = GetTransmissionClient(config);
-        return await client.AddTorrentAsync(config, url, category);
+        return await client.AddTorrentAsync(config, url, category, seedRatioLimit, seedTimeLimitMinutes);
     }
 
-    private async Task<string?> AddToDelugeAsync(DownloadClient config, string url, string category)
+    private async Task<string?> AddToDelugeAsync(DownloadClient config, string url, string category, double? seedRatioLimit = null, int? seedTimeLimitMinutes = null)
     {
         var client = GetDelugeClient(config);
-        return await client.AddTorrentAsync(config, url, category);
+        return await client.AddTorrentAsync(config, url, category, seedRatioLimit, seedTimeLimitMinutes);
     }
 
-    private async Task<string?> AddToRTorrentAsync(DownloadClient config, string url, string category)
+    private async Task<string?> AddToRTorrentAsync(DownloadClient config, string url, string category, double? seedRatioLimit = null, int? seedTimeLimitMinutes = null)
     {
         var client = GetRTorrentClient(config);
-        return await client.AddTorrentAsync(config, url, category);
+        return await client.AddTorrentAsync(config, url, category, seedRatioLimit, seedTimeLimitMinutes);
     }
 
     private async Task<string?> AddToSabnzbdAsync(DownloadClient config, string url, string category)
@@ -782,10 +782,10 @@ public class DownloadClientService : IDownloadClientService
         return await client.TestConnectionAsync(config);
     }
 
-    private async Task<AddDownloadResult> AddToDecypharrWithResultAsync(DownloadClient config, string url, string category, string? expectedName = null)
+    private async Task<AddDownloadResult> AddToDecypharrWithResultAsync(DownloadClient config, string url, string category, string? expectedName = null, double? seedRatioLimit = null, int? seedTimeLimitMinutes = null)
     {
         var client = GetDecypharrClient(config);
-        return await client.AddTorrentWithResultAsync(config, url, category, expectedName);
+        return await client.AddTorrentWithResultAsync(config, url, category, expectedName, seedRatioLimit, seedTimeLimitMinutes);
     }
 
     private async Task<DownloadClientStatus?> GetDecypharrStatusAsync(DownloadClient config, string downloadId)

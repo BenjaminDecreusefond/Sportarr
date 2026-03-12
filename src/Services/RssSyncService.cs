@@ -604,12 +604,18 @@ public class RssSyncService : BackgroundService
             return false;
         }
 
-        // Send to download client
+        // Look up indexer seed settings for torrent clients
+        var indexerRecord = await db.Indexers
+            .FirstOrDefaultAsync(i => i.Name == release.Indexer, cancellationToken);
+
+        // Send to download client with seed config from indexer
         var downloadId = await downloadClientService.AddDownloadAsync(
             downloadClient,
             release.DownloadUrl,
             downloadClient.Category,
-            release.Title
+            release.Title,
+            indexerRecord?.SeedRatio,
+            indexerRecord?.SeedTime
         );
 
         if (downloadId == null)
@@ -633,6 +639,7 @@ public class RssSyncService : BackgroundService
             Downloaded = 0,
             Progress = 0,
             Indexer = release.Indexer,
+            IndexerId = indexerRecord?.Id,
             Protocol = release.Protocol,
             TorrentInfoHash = release.TorrentInfoHash,
             RetryCount = 0,
@@ -644,11 +651,6 @@ public class RssSyncService : BackgroundService
         };
 
         db.DownloadQueue.Add(queueItem);
-
-        // Save grab history for potential re-grabbing (Sportarr-exclusive feature)
-        // This allows users to re-download the exact same release if they lose their media files
-        var indexerRecord = await db.Indexers
-            .FirstOrDefaultAsync(i => i.Name == release.Indexer, cancellationToken);
 
         // Use the releasePart passed from ShouldGrabReleaseAsync (no need to re-detect)
         var partName = releasePart;

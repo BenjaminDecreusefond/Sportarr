@@ -69,7 +69,7 @@ jobs:
           git push origin "v$NEW_VERSION"
           git push origin "v$FULL_VERSION"
 
-      - name: Extract changelog for version
+      - name: Generate release notes
         id: changelog
         run: |
           VERSION="${{ steps.bump_version.outputs.version }}"
@@ -78,24 +78,60 @@ jobs:
           PREVIOUS_TAG=$(git tag --sort=-version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | grep -v "$VERSION" | head -1)
           echo "Previous tag: $PREVIOUS_TAG"
 
-          # Get all commits since the previous tag, excluding version bumps
+          # Get all commit subjects since the previous tag, excluding version bumps
           if [ -n "$PREVIOUS_TAG" ]; then
-            COMMITS=$(git log --pretty=format:"- %s" --no-merges --grep="\[skip ci\]" --invert-grep "$PREVIOUS_TAG"..HEAD~1 2>/dev/null || git log --pretty=format:"- %s" --no-merges --grep="\[skip ci\]" --invert-grep -10)
+            RAW_COMMITS=$(git log --pretty=format:"%s" --no-merges --grep="\[skip ci\]" --invert-grep "$PREVIOUS_TAG"..HEAD~1 2>/dev/null || git log --pretty=format:"%s" --no-merges --grep="\[skip ci\]" --invert-grep -10)
           else
-            # No previous tag, get recent commits excluding version bumps
-            COMMITS=$(git log --pretty=format:"- %s" --no-merges --grep="\[skip ci\]" --invert-grep -10)
+            RAW_COMMITS=$(git log --pretty=format:"%s" --no-merges --grep="\[skip ci\]" --invert-grep -10)
           fi
 
-          # Build release notes
-          echo "## Changes" > release_notes.md
-          echo "" >> release_notes.md
-          if [ -n "$COMMITS" ]; then
-            echo "$COMMITS" >> release_notes.md
-          else
-            echo "- Bug fixes and improvements" >> release_notes.md
-          fi
-          echo "" >> release_notes.md
-          echo "See [CHANGELOG.md](https://github.com/Sportarr/Sportarr/blob/main/CHANGELOG.md) for details." >> release_notes.md
+          # Write raw commits to a temp file to avoid shell quoting issues
+          echo "$RAW_COMMITS" > /tmp/raw_commits.txt
+
+          # Categorize commits into clean, summarized release notes
+          python3 << 'PYEOF'
+          import re
+
+          with open("/tmp/raw_commits.txt") as f:
+            commits = [line.strip() for line in f if line.strip()]
+
+          categories = {
+            "New Features": [],
+            "Bug Fixes": [],
+            "Improvements": [],
+          }
+
+          for msg in commits:
+            # Strip conventional commit prefix
+            clean = re.sub(r"^(feat|fix|perf|refactor|chore|docs|style|test|ci|build)(\(.+?\))?:\s*", "", msg)
+            clean = clean[0].upper() + clean[1:] if clean else clean
+
+            # Skip non-user-facing commits
+            if re.match(r"^(chore|ci|build|docs|style|test)(\(.+?\))?:", msg):
+              continue
+            elif re.match(r"^feat(\(.+?\))?:", msg):
+              categories["New Features"].append(clean)
+            elif re.match(r"^fix(\(.+?\))?:", msg):
+              categories["Bug Fixes"].append(clean)
+            elif re.match(r"^(perf|refactor)(\(.+?\))?:", msg):
+              categories["Improvements"].append(clean)
+            else:
+              categories["Improvements"].append(clean)
+
+          lines = []
+          for section, items in categories.items():
+            if items:
+              lines.append(f"### {section}")
+              for item in items:
+                lines.append(f"- {item}")
+              lines.append("")
+
+          if not any(categories.values()):
+            lines.append("- Bug fixes and improvements")
+
+          with open("release_notes.md", "w") as f:
+            f.write("\n".join(lines) + "\n")
+          PYEOF
 
           echo "Generated release notes:"
           cat release_notes.md
@@ -322,10 +358,9 @@ jobs:
           VERSION: ${{ steps.bump_version.outputs.version }}
           BASE_VERSION: ${{ steps.bump_version.outputs.base_version }}
           RELEASE_URL: https://github.com/${{ github.repository }}/releases/tag/${{ steps.bump_version.outputs.version }}
-          CHANGELOG_URL: https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md
         run: |
           VERSION_NUMBER="${{ steps.bump_version.outputs.version_number }}"
-          DESCRIPTION="**[View Full Changelog](${CHANGELOG_URL})** | **[View Release](${RELEASE_URL})**\n\n**Docker Installation**\n\`\`\`\ndocker pull sportarr/sportarr:latest\ndocker pull sportarr/sportarr:${VERSION_NUMBER}\n\`\`\`"
+          DESCRIPTION="**[View Release](${RELEASE_URL})**\n\n**Docker Installation**\n\`\`\`\ndocker pull sportarr/sportarr:latest\ndocker pull sportarr/sportarr:${VERSION_NUMBER}\n\`\`\`"
 
           curl -X POST "$WEBHOOK_URL" \
             -H "Content-Type: application/json" \

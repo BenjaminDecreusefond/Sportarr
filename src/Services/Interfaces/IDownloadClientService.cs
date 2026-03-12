@@ -22,12 +22,12 @@ public interface IDownloadClientService
     /// <param name="category">Category to assign the download</param>
     /// <param name="expectedName">Optional expected name for tracking</param>
     /// <returns>Download ID if successful, null otherwise</returns>
-    Task<string?> AddDownloadAsync(DownloadClient client, string url, string category, string? expectedName = null);
+    Task<string?> AddDownloadAsync(DownloadClient client, string url, string category, string? expectedName = null, double? seedRatioLimit = null, int? seedTimeLimitMinutes = null);
 
     /// <summary>
     /// Add a download and get detailed result
     /// </summary>
-    Task<AddDownloadResult> AddDownloadWithResultAsync(DownloadClient client, string url, string category, string? expectedName = null);
+    Task<AddDownloadResult> AddDownloadWithResultAsync(DownloadClient client, string url, string category, string? expectedName = null, double? seedRatioLimit = null, int? seedTimeLimitMinutes = null);
 
     /// <summary>
     /// Get status of a specific download
