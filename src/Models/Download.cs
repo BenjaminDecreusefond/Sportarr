@@ -89,7 +89,8 @@ public enum DownloadStatus
     Warning,
     Importing,
     Imported,
-    ImportPending // Download complete but waiting for path to become accessible
+    ImportPending, // Download complete but waiting for path to become accessible
+    ImportWarning  // Download complete but not an upgrade for existing file
 }
 
 /// <summary>

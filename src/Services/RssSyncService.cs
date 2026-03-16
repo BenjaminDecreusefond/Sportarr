@@ -442,6 +442,28 @@ public class RssSyncService : BackgroundService
         if (isBlocklisted)
             return (false, "Blocklisted", releasePart);
 
+        // 3b. Check GrabHistory - prevent re-grabbing same release (Sonarr HistorySpecification)
+        bool alreadyGrabbed = false;
+
+        if (!string.IsNullOrEmpty(release.TorrentInfoHash))
+        {
+            alreadyGrabbed = await db.GrabHistory
+                .AnyAsync(g => g.EventId == evt.Id
+                            && g.TorrentInfoHash == release.TorrentInfoHash
+                            && !g.Superseded, cancellationToken);
+        }
+
+        if (!alreadyGrabbed && !string.IsNullOrEmpty(release.Guid))
+        {
+            alreadyGrabbed = await db.GrabHistory
+                .AnyAsync(g => g.EventId == evt.Id
+                            && g.Guid == release.Guid
+                            && !g.Superseded, cancellationToken);
+        }
+
+        if (alreadyGrabbed)
+            return (false, "Already grabbed (in grab history)", releasePart);
+
         // 4. Check for recent failed downloads with backoff (part-aware)
         var recentFailedDownload = await db.DownloadQueue
             .Where(d => d.EventId == evt.Id && d.Status == DownloadStatus.Failed)

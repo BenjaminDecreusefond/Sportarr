@@ -102,6 +102,26 @@ const BackupPage: React.FC = () => {
     }
   };
 
+  const handleDownloadBackup = async (backupName: string) => {
+    try {
+      const response = await apiGet(`/api/system/backup/download/${encodeURIComponent(backupName)}`);
+      if (!response.ok) throw new Error('Failed to download backup');
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = backupName;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (err) {
+      toast.error('Download Failed', {
+        description: err instanceof Error ? err.message : 'Failed to download backup',
+      });
+    }
+  };
+
   const handleCleanupOldBackups = async () => {
     if (!confirm('This will delete backups older than the configured retention period. Continue?')) {
       return;
@@ -220,6 +240,13 @@ const BackupPage: React.FC = () => {
                     </div>
                   </div>
                   <div className="flex gap-2">
+                    <button
+                      onClick={() => handleDownloadBackup(backup.name)}
+                      className="px-4 py-2 bg-blue-900/30 text-blue-400 rounded hover:bg-blue-900/50 flex items-center gap-2 transition-colors"
+                    >
+                      <ArrowDownTrayIcon className="w-4 h-4" />
+                      Download
+                    </button>
                     <button
                       onClick={() => setShowRestoreConfirm(backup.name)}
                       disabled={restoring}

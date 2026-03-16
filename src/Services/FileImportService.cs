@@ -309,6 +309,24 @@ public class FileImportService : IFileImportService
 
             if (upgradedFile != null)
             {
+                // Compare quality scores - reject if not an upgrade (Sonarr UpgradeSpecification)
+                var existingTotalScore = ReleaseEvaluator.CalculateQualityScoreFromName(upgradedFile.Quality) + upgradedFile.CustomFormatScore;
+                var newTotalScore = ReleaseEvaluator.CalculateQualityScoreFromName(download.Quality) + download.CustomFormatScore;
+
+                if (newTotalScore <= existingTotalScore)
+                {
+                    _logger.LogWarning(
+                        "[Import] Not an upgrade - existing file has same or better quality: " +
+                        "{ExistingQuality} (score {ExistingScore}) vs {NewQuality} (score {NewScore})",
+                        upgradedFile.Quality, existingTotalScore, download.Quality, newTotalScore);
+
+                    download.Status = DownloadStatus.ImportWarning;
+                    download.ErrorMessage = $"Not an upgrade for existing file (existing: {upgradedFile.Quality} score {existingTotalScore}, new: {download.Quality} score {newTotalScore})";
+                    download.LastUpdate = DateTime.UtcNow;
+                    await _db.SaveChangesAsync();
+                    return null!;
+                }
+
                 _logger.LogInformation("[Import] Upgrade detected - replacing existing file: {OldPath} ({OldQuality}) with {NewQuality}",
                     upgradedFile.FilePath, upgradedFile.Quality, _parser.BuildQualityString(parsed));
 
@@ -672,8 +690,21 @@ public class FileImportService : IFileImportService
         // imports from download client folders, not from the library itself.
         // The same-path check is only needed in LibraryImportService for manual re-imports.
 
-        // Handle duplicates
-        destinationPath = GetUniqueFilePath(destinationPath);
+        // If destination file already exists, delete it (Sonarr behavior)
+        // Never create numbered duplicates like (1), (2)
+        if (File.Exists(destinationPath))
+        {
+            _logger.LogWarning("[Import] Destination file already exists, deleting: {Path}", destinationPath);
+            try
+            {
+                File.Delete(destinationPath);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[Import] Failed to delete existing file at destination: {Path}", destinationPath);
+                throw new Exception($"Cannot import: destination file exists and could not be deleted: {destinationPath}");
+            }
+        }
 
         return destinationPath;
     }

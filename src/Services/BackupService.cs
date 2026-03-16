@@ -21,7 +21,7 @@ public class BackupService
         _db = db;
         _logger = logger;
         _configService = configService;
-        _dataDirectory = configuration["DataDirectory"] ?? "./data";
+        _dataDirectory = configuration["Sportarr:DataPath"] ?? Path.Combine(Directory.GetCurrentDirectory(), "data");
         _databasePath = Path.Combine(_dataDirectory, "sportarr.db");
     }
 
@@ -114,6 +114,13 @@ public class BackupService
                     zipArchive.CreateEntryFromFile(shmPath, "sportarr.db-shm");
                 }
 
+                // Add config.xml (API key, auth, bind URL)
+                var configPath = Path.Combine(_dataDirectory, "config.xml");
+                if (File.Exists(configPath))
+                {
+                    zipArchive.CreateEntryFromFile(configPath, "config.xml");
+                }
+
                 // Add backup metadata
                 var metadata = zipArchive.CreateEntry("backup_metadata.txt");
                 using (var writer = new StreamWriter(metadata.Open()))
@@ -200,6 +207,15 @@ public class BackupService
             if (File.Exists(restoredShmPath))
             {
                 File.Copy(restoredShmPath, _databasePath + "-shm", true);
+            }
+
+            // Restore config.xml if present in backup
+            var restoredConfigPath = Path.Combine(restoreDir, "config.xml");
+            if (File.Exists(restoredConfigPath))
+            {
+                var configPath = Path.Combine(_dataDirectory, "config.xml");
+                File.Copy(restoredConfigPath, configPath, true);
+                _logger.LogInformation("Restored config.xml from backup");
             }
 
             // Clean up restore directory

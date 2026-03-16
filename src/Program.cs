@@ -2073,6 +2073,23 @@ app.MapPost("/api/system/backup/restore/{backupName}", async (string backupName,
     }
 });
 
+app.MapGet("/api/system/backup/download/{backupName}", async (string backupName, Sportarr.Api.Services.BackupService backupService) =>
+{
+    try
+    {
+        var backups = await backupService.GetBackupsAsync();
+        var backup = backups.FirstOrDefault(b => b.Name == backupName);
+        if (backup == null || !File.Exists(backup.Path))
+            return Results.NotFound(new { message = "Backup file not found" });
+
+        return Results.File(backup.Path, "application/zip", backupName);
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem(ex.Message);
+    }
+});
+
 app.MapDelete("/api/system/backup/{backupName}", async (string backupName, Sportarr.Api.Services.BackupService backupService) =>
 {
     try

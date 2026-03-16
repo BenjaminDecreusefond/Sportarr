@@ -171,14 +171,15 @@ public static class QualityParser
     /// <summary>
     /// Source detection regex - matches BluRay, WEB-DL, WebRip, HDTV, DVD, etc.
     /// </summary>
-    private static readonly Regex SourceRegex = new(
+    private static readonly Regex _sourceRegex = new(
         @"\b(?:" +
         // BluRay sources
         @"(?<bluray>M?BluRay|Blu-Ray|HDDVD|HD[-_. ]?DVD|BD(?!$)|BDMux|BD(?:25|50)|BD[-_. ]?Rip)|" +
         // WEB-DL sources - includes streaming service indicators
         @"(?<webdl>WEB[-_. ]?DL|WEBDL|WebHD|WEB[-_. ]HD|" +
             @"(?:DL|WEB|BD|BR)MUX|" +
-            @"(?:Amazon|Netflix|iTunes|Vudu|Hulu|Disney\+?|HBO(?:Max)?|AppleTV\+?|Peacock|Paramount\+?|ESPN\+?|DAZN|UFC[-_. ]?FightPass)[-_. ]?(?:HD|UHD|WEB|4K)?)|" +
+            @"(?:Amazon|Netflix|iTunes|Vudu|Hulu|Disney\+?|HBO(?:Max)?|AppleTV\+?|Peacock|Paramount\+?|ESPN\+?|DAZN|UFC[-_. ]?FightPass)[-_. ]?(?:HD|UHD|WEB|4K)?|" +
+            @"WEB(?![-_. ]?(?:Rip|Cap|Mux|DL|HD))(?=[-_. ]|$))|" +  // bare WEB, not followed by Rip/Cap/Mux/DL/HD
         // WebRip sources
         @"(?<webrip>WEB[-_. ]?Rip|WEBRip|WEB[-_. ]?Cap|WEBCap|WEB[-_. ]?Mux|HC[-_. ]?WEBRip)|" +
         // HDTV sources
@@ -198,15 +199,16 @@ public static class QualityParser
     /// <summary>
     /// Raw HD detection regex
     /// </summary>
-    private static readonly Regex RawHDRegex = new(
+    private static readonly Regex _rawHDRegex = new(
         @"\b(?<rawhd>RawHD|Raw[-_. ]HD)\b",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     /// <summary>
     /// Resolution detection regex - matches 360p through 2160p and pixel dimensions
     /// </summary>
-    private static readonly Regex ResolutionRegex = new(
-        @"\b(?:" +
+    private static readonly Regex _resolutionRegex = new(
+        @"(?<![a-zA-Z0-9])" + //no letter/digit immediately before
+        @"(?:" +
         @"(?<R360p>360p|360i)|" +
         @"(?<R480p>480p|480i|640x480|848x480|854x480)|" +
         @"(?<R540p>540p|540i)|" +
@@ -214,13 +216,14 @@ public static class QualityParser
         @"(?<R720p>720p|720i|1280x720|960x720)|" +
         @"(?<R1080p>1080p|1080i|1920x1080|1440x1080|FullHD|Full[-_. ]HD|FHD)|" +
         @"(?<R2160p>2160p|2160i|3840x2160|4096x2160|UHD|4K[-_. ]?UHD|(?<![a-z])4K(?![a-z]))" +
-        @")\b",
+        @")" +
+        @"(?:[a-z]{0,2}\d{1,3}(?:fps)?)?(?=[._\s\-\[]|$)", //swallow optional trailing FPS suffix
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     /// <summary>
     /// Alternative resolution detection for UHD/4K patterns not caught by main regex
     /// </summary>
-    private static readonly Regex AlternativeResolutionRegex = new(
+    private static readonly Regex _alternativeResolutionRegex = new(
         @"(?:" +
         @"(?<R2160p>\[4K\]|\(4K\)|\.4K\.)" +
         @")",
@@ -229,7 +232,7 @@ public static class QualityParser
     /// <summary>
     /// Codec detection regex - helps identify quality when source is ambiguous
     /// </summary>
-    private static readonly Regex CodecRegex = new(
+    private static readonly Regex _codecRegex = new(
         @"\b(?<codec>" +
         @"x264|h\.?264|AVC|" +
         @"x265|h\.?265|HEVC|" +
@@ -242,7 +245,7 @@ public static class QualityParser
     /// <summary>
     /// Remux detection regex
     /// </summary>
-    private static readonly Regex RemuxRegex = new(
+    private static readonly Regex _remuxRegex = new(
         @"\b(?<remux>" +
         @"(?:BD|UHD)?[-_. ]?Remux|" +
         @"Remux[-_. ]?(?:BD|UHD)?|" +
@@ -254,21 +257,21 @@ public static class QualityParser
     /// <summary>
     /// PROPER release detection
     /// </summary>
-    private static readonly Regex ProperRegex = new(
+    private static readonly Regex _properRegex = new(
         @"\b(?<proper>proper)\b",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     /// <summary>
     /// REPACK/RERIP detection
     /// </summary>
-    private static readonly Regex RepackRegex = new(
+    private static readonly Regex _repackRegex = new(
         @"\b(?<repack>repack\d?|rerip\d?)\b",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     /// <summary>
     /// Version detection (v2, v3, etc.)
     /// </summary>
-    private static readonly Regex VersionRegex = new(
+    private static readonly Regex _versionRegex = new(
         @"(?:" +
         @"\d[-._ ]?v(?<version>\d)|" +
         @"(?<![a-z])v(?<version>\d)|" +
@@ -280,7 +283,7 @@ public static class QualityParser
     /// <summary>
     /// REAL release detection (case-sensitive)
     /// </summary>
-    private static readonly Regex RealRegex = new(
+    private static readonly Regex _realRegex = new(
         @"\b(?<real>REAL)\b",
         RegexOptions.Compiled);
 
@@ -319,18 +322,18 @@ public static class QualityParser
     {
         var revision = new Revision { Version = 1, Real = 0 };
 
-        if (ProperRegex.IsMatch(name))
+        if (_properRegex.IsMatch(name))
         {
             revision.Version = 2;
         }
 
-        if (RepackRegex.IsMatch(name))
+        if (_repackRegex.IsMatch(name))
         {
             revision.Version = 2;
             revision.IsRepack = true;
         }
 
-        var versionMatch = VersionRegex.Match(name);
+        var versionMatch = _versionRegex.Match(name);
         if (versionMatch.Success)
         {
             var versionGroup = versionMatch.Groups["version"];
@@ -346,7 +349,7 @@ public static class QualityParser
             }
         }
 
-        if (RealRegex.IsMatch(name))
+        if (_realRegex.IsMatch(name))
         {
             revision.Real = 1;
         }
@@ -368,7 +371,7 @@ public static class QualityParser
         result.Revision = ParseQualityModifiers(normalizedName);
 
         // Check for Raw-HD first (special case)
-        if (RawHDRegex.IsMatch(normalizedName))
+        if (_rawHDRegex.IsMatch(normalizedName))
         {
             result.Quality = Quality.RAWHD;
             return result;
@@ -378,9 +381,9 @@ public static class QualityParser
         var resolution = ParseResolution(normalizedName);
 
         // Parse source - get the LAST match (handles titles with multiple indicators)
-        var sourceMatch = SourceRegex.Match(normalizedName);
+        var sourceMatch = _sourceRegex.Match(normalizedName);
         QualitySource? source = null;
-        bool isRemux = RemuxRegex.IsMatch(normalizedName);
+        bool isRemux = _remuxRegex.IsMatch(normalizedName);
 
         Match? lastSourceMatch = null;
         var currentMatch = sourceMatch;
@@ -406,7 +409,7 @@ public static class QualityParser
     /// </summary>
     private static Resolution ParseResolution(string name)
     {
-        var resolutionMatch = ResolutionRegex.Match(name);
+        var resolutionMatch = _resolutionRegex.Match(name);
 
         if (resolutionMatch.Success)
         {
@@ -420,7 +423,7 @@ public static class QualityParser
         }
 
         // Try alternative patterns
-        var altMatch = AlternativeResolutionRegex.Match(name);
+        var altMatch = _alternativeResolutionRegex.Match(name);
         if (altMatch.Success)
         {
             if (altMatch.Groups["R2160p"].Success) return Resolution.R2160p;
@@ -477,7 +480,7 @@ public static class QualityParser
         }
 
         // Check for codec hints
-        var codecMatch = CodecRegex.Match(name);
+        var codecMatch = _codecRegex.Match(name);
         if (codecMatch.Success)
         {
             var codec = codecMatch.Groups["codec"].Value.ToLowerInvariant();
