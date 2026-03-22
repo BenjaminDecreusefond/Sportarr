@@ -447,6 +447,8 @@ public class SportsFileNameParser
 
     // Date extraction patterns
     private static readonly Regex DatePattern = new(@"(?<year>\d{4})[\.\-\s]+(?<month>\d{2})[\.\-\s]+(?<day>\d{2})", RegexOptions.Compiled);
+    // European DD.MM.YYYY format (e.g., "19.03.2026") — used as fallback when year-first format is not found
+    private static readonly Regex EuropeanDatePattern = new(@"(?<day>\d{2})[\.\-](?<month>\d{2})[\.\-](?<year>20[2-9]\d)", RegexOptions.Compiled);
     private static readonly Regex YearOnlyPattern = new(@"\b(?<year>20[12]\d)\b", RegexOptions.Compiled);
     // Season span pattern for multi-year seasons like "2025-2026" or "2025-26"
     private static readonly Regex SeasonSpanPattern = new(@"\b(?<startYear>20[12]\d)[\-/](?<endYear>20[12]\d|[12]\d)\b", RegexOptions.Compiled);
@@ -520,41 +522,65 @@ public class SportsFileNameParser
         }
         else
         {
-            // Try season span extraction first (e.g., "2025-2026" or "2025-26")
-            var seasonSpanMatch = SeasonSpanPattern.Match(cleanName);
-            if (seasonSpanMatch.Success && int.TryParse(seasonSpanMatch.Groups["startYear"].Value, out var startYear))
+            // Try European DD.MM.YYYY format as secondary fallback (e.g., "19.03.2026")
+            var euDateMatch = EuropeanDatePattern.Match(cleanName);
+            if (euDateMatch.Success &&
+                int.TryParse(euDateMatch.Groups["year"].Value, out var euYear) &&
+                int.TryParse(euDateMatch.Groups["month"].Value, out var euMonth) &&
+                int.TryParse(euDateMatch.Groups["day"].Value, out var euDay) &&
+                euMonth <= 12 && euDay <= 31)
             {
-                result.EventYear = startYear;
-
-                // Parse end year - handle both full year (2026) and short year (26)
-                var endYearStr = seasonSpanMatch.Groups["endYear"].Value;
-                if (int.TryParse(endYearStr, out var endYearParsed))
+                try
                 {
-                    // If it's a 2-digit year, convert to full year based on start year century
-                    if (endYearParsed < 100)
-                    {
-                        endYearParsed = (startYear / 100) * 100 + endYearParsed;
-                    }
-                    result.SeasonYearEnd = endYearParsed;
+                    result.EventDate = new DateTime(euYear, euMonth, euDay);
+                    _logger.LogDebug("[SportsFileNameParser] Extracted European-format date {Date} from '{Filename}'",
+                        result.EventDate.Value.ToString("yyyy-MM-dd"), filename);
                 }
-
-                _logger.LogDebug("[SportsFileNameParser] Extracted season span {StartYear}-{EndYear} from '{Filename}'",
-                    startYear, result.SeasonYearEnd ?? startYear, filename);
-            }
-            else
-            {
-                // Try year-only extraction
-                var yearMatch = YearOnlyPattern.Match(cleanName);
-                if (yearMatch.Success && int.TryParse(yearMatch.Groups["year"].Value, out var year))
+                catch (Exception ex)
                 {
-                    result.EventYear = year;
-                    _logger.LogDebug("[SportsFileNameParser] Extracted year-only {Year} from '{Filename}'",
-                        year, filename);
+                    _logger.LogWarning("[SportsFileNameParser] Invalid European date {Day}-{Month}-{Year} in '{Filename}': {Error}",
+                        euDay, euMonth, euYear, filename, ex.Message);
+                }
+            }
+
+            if (!result.EventDate.HasValue)
+            {
+                // Try season span extraction first (e.g., "2025-2026" or "2025-26")
+                var seasonSpanMatch = SeasonSpanPattern.Match(cleanName);
+                if (seasonSpanMatch.Success && int.TryParse(seasonSpanMatch.Groups["startYear"].Value, out var startYear))
+                {
+                    result.EventYear = startYear;
+
+                    // Parse end year - handle both full year (2026) and short year (26)
+                    var endYearStr = seasonSpanMatch.Groups["endYear"].Value;
+                    if (int.TryParse(endYearStr, out var endYearParsed))
+                    {
+                        // If it's a 2-digit year, convert to full year based on start year century
+                        if (endYearParsed < 100)
+                        {
+                            endYearParsed = (startYear / 100) * 100 + endYearParsed;
+                        }
+                        result.SeasonYearEnd = endYearParsed;
+                    }
+
+                    _logger.LogDebug("[SportsFileNameParser] Extracted season span {StartYear}-{EndYear} from '{Filename}'",
+                        startYear, result.SeasonYearEnd ?? startYear, filename);
                 }
                 else
                 {
-                    _logger.LogDebug("[SportsFileNameParser] No date/year found in '{Filename}' (cleanName: '{CleanName}')",
-                        filename, cleanName);
+                    // Try year-only extraction
+                    var yearMatch = YearOnlyPattern.Match(cleanName);
+                    if (yearMatch.Success && int.TryParse(yearMatch.Groups["year"].Value, out var year))
+                    {
+                        result.EventYear = year;
+                        _logger.LogDebug("[SportsFileNameParser] Extracted year-only {Year} from '{Filename}'",
+                            year, filename);
+                    }
+                    else
+                    {
+                        _logger.LogDebug("[SportsFileNameParser] No date/year found in '{Filename}' (cleanName: '{CleanName}')",
+                            filename, cleanName);
+                    }
                 }
             }
         }
