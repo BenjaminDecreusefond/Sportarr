@@ -146,6 +146,7 @@ public class EventQueryService
     /// - WWE RAW 2026-03-02 -> Primary: "WWE RAW 2026 03 02", Fallback: "WWE RAW 2026 03"
     /// - UFC 299 -> Primary: "UFC 299", Fallback: "UFC 2026"
     /// - NFL Dec 2025 -> Primary: "NFL 2025 12", Fallback: "NFL 2025"
+    /// - NBA Mar 2026 Miami Heat vs LAL -> Primary: "NBA 2026 03 Lakers", "NBA 2026 03 Heat", Fallback: "NBA 2026 03", "NBA 2026"
     /// </summary>
     /// <param name="evt">The event to build queries for</param>
     /// <param name="part">Optional - IGNORED. Parts are filtered locally from results.</param>
@@ -407,7 +408,9 @@ public class EventQueryService
 
     /// <summary>
     /// Build team sport queries (NFL, NBA, NHL, MLB, etc.).
-    /// Primary: league + year + month. Fallback: league + year.
+    /// When team names are available, emits team-specific queries first (most specific),
+    /// then falls back to league + year + month, and finally league + year only.
+    /// Up to 4 queries total; deduplicates if both teams share the same nickname.
     /// </summary>
     private void BuildTeamSportQueries(Event evt, string? leagueName, List<string> queries)
     {
@@ -421,11 +424,37 @@ public class EventQueryService
 
         var year = evt.EventDate.Year;
         var month = evt.EventDate.Month;
+        var monthStr = month.ToString("D2");
 
-        // Primary: "NFL 2025 12" (year + month)
-        queries.Add($"{leaguePrefix} {year} {month:D2}");
-        // Fallback: "NFL 2025" (year only)
+        // Resolve team names (prefer navigation property Name, fall back to string fields)
+        var homeTeamName = evt.HomeTeam?.Name ?? evt.HomeTeamName;
+        var awayTeamName = evt.AwayTeam?.Name ?? evt.AwayTeamName;
+
+        // Extract nickname (last word) for each team
+        var homeNickname = GetTeamNickname(homeTeamName);
+        var awayNickname = GetTeamNickname(awayTeamName);
+
+        // Team-specific queries (most specific first); deduplicate if both nicknames are identical
+        if (!string.IsNullOrEmpty(homeNickname))
+            queries.Add($"{leaguePrefix} {year} {monthStr} {homeNickname}");
+        if (!string.IsNullOrEmpty(awayNickname) && awayNickname != homeNickname)
+            queries.Add($"{leaguePrefix} {year} {monthStr} {awayNickname}");
+
+        // Existing queries as fallbacks
+        queries.Add($"{leaguePrefix} {year} {monthStr}");
         queries.Add($"{leaguePrefix} {year}");
+    }
+
+    /// <summary>
+    /// Extract the team nickname (last significant word) from a full team name.
+    /// e.g. "Los Angeles Lakers" -> "Lakers", "Miami Heat" -> "Heat"
+    /// Returns null if the name cannot be processed.
+    /// </summary>
+    private static string? GetTeamNickname(string? teamName)
+    {
+        if (string.IsNullOrWhiteSpace(teamName)) return null;
+        var parts = teamName.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length > 0 ? parts[^1] : null;
     }
 
 
