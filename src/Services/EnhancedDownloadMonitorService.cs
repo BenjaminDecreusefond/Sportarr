@@ -326,8 +326,11 @@ public class EnhancedDownloadMonitorService : BackgroundService
         if (download.Event != null && !download.Event.Monitored)
         {
             // Only set warning status if not already completed/imported/failed
+            // AND only if this was NOT a manual grab — manual grabs should always import
+            // regardless of event monitoring status (matches AutomaticSearchService behavior)
             if (download.Status != DownloadStatus.Imported &&
-                download.Status != DownloadStatus.Failed)
+                download.Status != DownloadStatus.Failed &&
+                !download.IsManualSearch)
             {
                 download.Status = DownloadStatus.Warning;
 
