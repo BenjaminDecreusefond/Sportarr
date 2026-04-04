@@ -351,6 +351,11 @@ public class DelugeClient
             timeRemaining = TimeSpan.FromSeconds(torrent.Eta);
         }
 
+        var computedSavePath = !string.IsNullOrEmpty(torrent.Name)
+            ? Path.Combine(torrent.SavePath, torrent.Name)
+            : torrent.SavePath;
+        _logger.LogInformation("[Deluge] Computed SavePath: {SavePath}", computedSavePath);
+
         return new DownloadClientStatus
         {
             Status = status,
@@ -358,7 +363,7 @@ public class DelugeClient
             Downloaded = torrent.TotalDone,
             Size = torrent.TotalSize,
             TimeRemaining = timeRemaining,
-            SavePath = torrent.SavePath,
+            SavePath = computedSavePath,
             ErrorMessage = status == "failed" ? $"Torrent in error state: {torrent.State}" : null,
             Ratio = torrent.Ratio
         };

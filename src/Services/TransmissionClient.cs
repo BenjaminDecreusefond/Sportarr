@@ -359,6 +359,11 @@ public class TransmissionClient
                 ? TimeSpan.FromSeconds(torrent.Eta)
                 : (TimeSpan?)null;
 
+            var computedSavePath = !string.IsNullOrEmpty(torrent.Name)
+                ? Path.Combine(torrent.DownloadDir, torrent.Name)
+                : torrent.DownloadDir;
+            _logger.LogInformation("[Transmission] Computed SavePath: {SavePath}", computedSavePath);
+
             return new DownloadClientStatus
             {
                 Status = status,
@@ -366,7 +371,7 @@ public class TransmissionClient
                 Downloaded = torrent.DownloadedEver,
                 Size = torrent.TotalSize,
                 TimeRemaining = timeRemaining,
-                SavePath = torrent.DownloadDir,
+                SavePath = computedSavePath,
                 Ratio = torrent.DownloadedEver > 0
                     ? (double)torrent.UploadedEver / torrent.DownloadedEver
                     : 0,
