@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
@@ -14,7 +15,7 @@ public class TransmissionClient
 {
     private readonly HttpClient _httpClient;
     private readonly ILogger<TransmissionClient> _logger;
-    private string? _sessionId;
+    private static readonly ConcurrentDictionary<string, string> _sessionIds = new();
     private string? _baseUrl;
     private string? _authCredentials;
     private HttpClient? _customHttpClient; // For SSL bypass
@@ -325,7 +326,7 @@ public class TransmissionClient
     {
         try
         {
-            var torrents = await GetTorrentsAsync(config);
+            var torrents = await GetTorrentsByHashAsync(config, hash);
             var torrent = torrents?.FirstOrDefault(t => t.HashString.Equals(hash, StringComparison.OrdinalIgnoreCase));
 
             if (torrent == null)
@@ -432,12 +433,15 @@ public class TransmissionClient
 
             var requestJson = JsonSerializer.Serialize(request);
 
+            var sessionKey = $"{_baseUrl ?? string.Empty}\0{_authCredentials ?? string.Empty}";
+            _sessionIds.TryGetValue(sessionKey, out var sessionId);
+
             var requestMessage = new HttpRequestMessage(HttpMethod.Post, _baseUrl)
             {
                 Content = new StringContent(requestJson, Encoding.UTF8, "application/json")
             };
-            if (!string.IsNullOrEmpty(_sessionId))
-                requestMessage.Headers.Add("X-Transmission-Session-Id", _sessionId);
+            if (!string.IsNullOrEmpty(sessionId))
+                requestMessage.Headers.Add("X-Transmission-Session-Id", sessionId);
             if (!string.IsNullOrEmpty(_authCredentials))
                 requestMessage.Headers.Authorization = new AuthenticationHeaderValue("Basic", _authCredentials);
 
@@ -448,7 +452,14 @@ public class TransmissionClient
             {
                 if (response.Headers.TryGetValues("X-Transmission-Session-Id", out var sessionIds))
                 {
-                    _sessionId = sessionIds.FirstOrDefault();
+                    var newSessionId = sessionIds.FirstOrDefault();
+                    if (string.IsNullOrEmpty(newSessionId))
+                    {
+                        _logger.LogWarning("[Transmission] 409 received but no session ID in response headers");
+                        return null;
+                    }
+
+                    _sessionIds[sessionKey] = newSessionId;
                     _logger.LogInformation("[Transmission] Got new session ID");
 
                     // Retry with new session ID (must create new request message)
@@ -456,7 +467,7 @@ public class TransmissionClient
                     {
                         Content = new StringContent(requestJson, Encoding.UTF8, "application/json")
                     };
-                    retryMessage.Headers.Add("X-Transmission-Session-Id", _sessionId);
+                    retryMessage.Headers.Add("X-Transmission-Session-Id", newSessionId);
                     if (!string.IsNullOrEmpty(_authCredentials))
                         retryMessage.Headers.Authorization = new AuthenticationHeaderValue("Basic", _authCredentials);
 
