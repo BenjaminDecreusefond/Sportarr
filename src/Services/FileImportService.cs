@@ -684,7 +684,8 @@ public class FileImportService : IFileImportService
         {
             // RenameEvents=false: preserve the original downloaded filename exactly as-is
             // This matches Sonarr/Radarr behavior - "don't rename" means keep the torrent's filename
-            filename = Path.GetFileName(sourceFile);
+            var originalFilename = !string.IsNullOrEmpty(sourceFile) ? Path.GetFileName(sourceFile) : null;
+            filename = !string.IsNullOrEmpty(originalFilename) ? originalFilename : (eventInfo.Title ?? parsed.EventTitle) + extension;
         }
 
         destinationPath = Path.Combine(destinationPath, filename);
