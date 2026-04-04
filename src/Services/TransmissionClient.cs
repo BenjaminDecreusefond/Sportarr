@@ -264,9 +264,14 @@ public class TransmissionClient
 
             return null;
         }
+        catch (OperationCanceledException)
+        {
+            _logger.LogWarning("[Transmission] Get torrents by hash cancelled (app shutting down or timeout): {Hash}", hash);
+            return null;
+        }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[Transmission] Error getting torrent by hash");
+            _logger.LogError(ex, "[Transmission] Error getting torrent by hash: {Hash}", hash);
             return null;
         }
     }
@@ -472,9 +477,19 @@ public class TransmissionClient
             _logger.LogWarning("[Transmission] RPC request failed: {Status}", response.StatusCode);
             return null;
         }
+        catch (OperationCanceledException)
+        {
+            _logger.LogWarning("[Transmission] RPC request cancelled (app shutting down or timeout): {Method}", method);
+            return null;
+        }
+        catch (ObjectDisposedException)
+        {
+            _logger.LogWarning("[Transmission] RPC request cancelled - HttpClient disposed (app shutting down): {Method}", method);
+            return null;
+        }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[Transmission] RPC request error");
+            _logger.LogError(ex, "[Transmission] RPC request error for method: {Method}", method);
             return null;
         }
     }
