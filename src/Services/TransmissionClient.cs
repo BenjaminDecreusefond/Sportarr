@@ -16,6 +16,10 @@ public class TransmissionClient
     private readonly HttpClient _httpClient;
     private readonly ILogger<TransmissionClient> _logger;
     private static readonly ConcurrentDictionary<string, string> _sessionIds = new();
+    private static readonly JsonSerializerOptions _transmissionJsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true
+    };
     private string? _baseUrl;
     private string? _authCredentials;
     private HttpClient? _customHttpClient; // For SSL bypass
@@ -214,7 +218,7 @@ public class TransmissionClient
                 if (doc.RootElement.TryGetProperty("arguments", out var args) &&
                     args.TryGetProperty("torrents", out var torrents))
                 {
-                    return JsonSerializer.Deserialize<List<TransmissionTorrent>>(torrents.GetRawText());
+                    return JsonSerializer.Deserialize<List<TransmissionTorrent>>(torrents.GetRawText(), _transmissionJsonOptions);
                 }
             }
 
@@ -258,7 +262,8 @@ public class TransmissionClient
                 if (doc.RootElement.TryGetProperty("arguments", out var args) &&
                     args.TryGetProperty("torrents", out var torrents))
                 {
-                    return JsonSerializer.Deserialize<List<TransmissionTorrent>>(torrents.GetRawText());
+                    _logger.LogInformation("[Transmission] Raw torrents JSON: {TorrentsJson}", torrents.GetRawText());
+                    return JsonSerializer.Deserialize<List<TransmissionTorrent>>(torrents.GetRawText(), _transmissionJsonOptions);
                 }
             }
 
