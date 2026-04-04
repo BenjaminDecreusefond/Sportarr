@@ -250,19 +250,14 @@ public class TransmissionClient
             };
 
             var requestJson = JsonSerializer.Serialize(new { method = "torrent-get", arguments });
-            _logger.LogInformation("[Transmission] Requesting torrent-get by hash: {json}", requestJson);
-
             var response = await SendRpcRequestAsync(config, "torrent-get", arguments);
-            _logger.LogInformation("[Transmission] Response for torrent-get by hash: {response}", response);
 
             if (response != null)
             {
                 var doc = JsonDocument.Parse(response);
-                _logger.LogInformation("[Transmission] Json response {Doc}", doc);
                 if (doc.RootElement.TryGetProperty("arguments", out var args) &&
                     args.TryGetProperty("torrents", out var torrents))
                 {
-                    _logger.LogInformation("[Transmission] Raw torrents JSON: {TorrentsJson}", torrents.GetRawText());
                     return JsonSerializer.Deserialize<List<TransmissionTorrent>>(torrents.GetRawText(), _transmissionJsonOptions);
                 }
             }
