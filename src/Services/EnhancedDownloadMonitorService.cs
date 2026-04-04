@@ -241,7 +241,7 @@ public class EnhancedDownloadMonitorService : BackgroundService
 
                 // Grace period: newly added downloads may not be visible in client yet
                 // Transmission/other clients can take several minutes to register a torrent
-                var gracePeriod = TimeSpan.FromMinutes(5);
+                var gracePeriod = TimeSpan.FromMinutes(3);
                 if (download.Added > DateTime.UtcNow - gracePeriod)
                 {
                     _logger.LogDebug("[Enhanced Download Monitor] Download recently added ({Age:F0}s ago), skipping missing check during grace period: {Title}",
