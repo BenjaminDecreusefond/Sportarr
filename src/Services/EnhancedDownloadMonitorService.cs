@@ -254,7 +254,7 @@ public class EnhancedDownloadMonitorService : BackgroundService
 
                 if (download.MissingFromClientCount >= 10)
                 {
-                    // After 10 consecutive checks (~5 minutes), remove from queue
+                    // After 10 consecutive checks (e.g. ~5 minutes at 30s poll interval), remove from queue
                     // This matches Sonarr behavior: downloads removed from client are removed from queue
                     _logger.LogWarning("[Enhanced Download Monitor] Download not found in client for {Count} consecutive checks, removing from queue: {Title} (DownloadId: {DownloadId})",
                         download.MissingFromClientCount, download.Title, download.DownloadId);
