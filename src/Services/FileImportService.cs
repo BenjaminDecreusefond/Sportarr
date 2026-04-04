@@ -681,7 +681,10 @@ public class FileImportService : IFileImportService
         }
         else
         {
-            filename = parsed.EventTitle + extension;
+            // Use the known event title from the database rather than parsed.EventTitle
+            // parsed.EventTitle is unreliable: MediaFileParser truncates at year/quality markers
+            // e.g. "NBA RS 2026 Denver Nuggets vs Utah Jazz..." gets truncated to "NBA RS"
+            filename = (eventInfo.Title ?? parsed.EventTitle) + extension;
         }
 
         destinationPath = Path.Combine(destinationPath, filename);
