@@ -29,6 +29,9 @@ public class ReleaseMatchScorer
     // Minimum match score for auto-grab (higher threshold for automatic downloads)
     public const int AutoGrabMatchScore = 50;
 
+    // Compiled regex for European DD.MM.YYYY date format (e.g., "19.03.2026")
+    private static readonly Regex EuropeanDateRegex = new(@"\b(\d{2})[.\-](\d{2})[.\-](20[2-9]\d)\b", RegexOptions.Compiled);
+
     /// <summary>
     /// Location hierarchy mapping parent locations (countries) to their child locations (cities/circuits).
     /// Used to prevent false positives when releases contain both country and city/circuit names.
@@ -400,6 +403,24 @@ public class ReleaseMatchScorer
             parsed.Year = int.Parse(dateMatch.Groups[1].Value);
             parsed.Month = int.Parse(dateMatch.Groups[2].Value);
             parsed.Day = int.Parse(dateMatch.Groups[3].Value);
+        }
+
+        // Fallback: European DD.MM.YYYY format (e.g., "19.03.2026")
+        if (!dateMatch.Success)
+        {
+            var euDateMatch = EuropeanDateRegex.Match(title);
+            if (euDateMatch.Success)
+            {
+                var day   = int.Parse(euDateMatch.Groups[1].Value);
+                var month = int.Parse(euDateMatch.Groups[2].Value);
+                var year  = int.Parse(euDateMatch.Groups[3].Value);
+                if (month <= 12 && day <= 31)
+                {
+                    parsed.Year  = year;
+                    parsed.Month = month;
+                    parsed.Day   = day;
+                }
+            }
         }
 
         // Detect sport prefix
