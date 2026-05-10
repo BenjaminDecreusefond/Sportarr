@@ -297,9 +297,9 @@ public class TorznabClient
             return config.Categories;
         }
 
-        // Default to standard sport categories (TV, TV/HD, TV/UHD, TV/Sport)
-        // This prevents searching movies, anime, software, etc.
-        return NewznabCategories.DefaultSportCategories.ToList();
+        // No categories configured = search all categories
+        // (Do not send cat=... and let release matching filter relevance)
+        return new List<string>();
     }
 
     /// <summary>

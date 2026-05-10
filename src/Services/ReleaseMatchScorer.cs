@@ -321,24 +321,25 @@ public class ReleaseMatchScorer
             score += 15;
         }
 
-        // Round number match.
-        // CRITICAL: when the event AND the release both carry a round number they
-        // MUST agree, regardless of sport. Round 1 should never match Round 2.
-        // Source of the event round: evt.Round (motorsport, structured) OR the event
-        // title (golf "The Masters Round 1", snooker etc.).
-        var eventRound = !string.IsNullOrEmpty(evt.Round) ? ExtractRoundNumber(evt.Round) : null;
-        if (!eventRound.HasValue && !string.IsNullOrEmpty(evt.Title))
+        // Round number match (non-team sports only).
+        // Team sports can use "Round" for playoff stage while evt.Round can represent
+        // game number, so comparing them can create false hard rejections.
+        if (!IsTeamSport(eventSportPrefix))
         {
-            var titleRoundMatch = Regex.Match(evt.Title, @"(?:Round|R|Week|W)\.?\s*(\d{1,2})\b", RegexOptions.IgnoreCase);
-            if (titleRoundMatch.Success && int.TryParse(titleRoundMatch.Groups[1].Value, out var titleRound))
-                eventRound = titleRound;
-        }
-        if (eventRound.HasValue && parsed.RoundNumber.HasValue)
-        {
-            if (parsed.RoundNumber == eventRound)
-                score += IsRoundBasedSport(eventSportPrefix) ? 25 : 15;
-            else
-                return 0; // Wrong round - reject immediately (Round 19 != Round 22, Masters R1 != R2)
+            var eventRound = !string.IsNullOrEmpty(evt.Round) ? ExtractRoundNumber(evt.Round) : null;
+            if (!eventRound.HasValue && !string.IsNullOrEmpty(evt.Title))
+            {
+                var titleRoundMatch = Regex.Match(evt.Title, @"(?:Round|R|Week|W)\.?\s*(\d{1,2})\b", RegexOptions.IgnoreCase);
+                if (titleRoundMatch.Success && int.TryParse(titleRoundMatch.Groups[1].Value, out var titleRound))
+                    eventRound = titleRound;
+            }
+            if (eventRound.HasValue && parsed.RoundNumber.HasValue)
+            {
+                if (parsed.RoundNumber == eventRound)
+                    score += IsRoundBasedSport(eventSportPrefix) ? 25 : 15;
+                else
+                    return 0; // Wrong round - reject immediately (Round 19 != Round 22, Masters R1 != R2)
+            }
         }
 
         // Location matching (for motorsport)
@@ -409,13 +410,42 @@ public class ReleaseMatchScorer
         if (roundMatch.Success)
             parsed.RoundNumber = int.Parse(roundMatch.Groups[1].Value);
 
+        static bool IsValidMonthDay(int month, int day) =>
+            month is >= 1 and <= 12 && day is >= 1 and <= 31;
+
         // Extract date (YYYY.MM.DD or YYYY-MM-DD)
         var dateMatch = Regex.Match(title, @"\b(20[2-9]\d)[.\-](\d{2})[.\-](\d{2})\b");
         if (dateMatch.Success)
         {
-            parsed.Year = int.Parse(dateMatch.Groups[1].Value);
-            parsed.Month = int.Parse(dateMatch.Groups[2].Value);
-            parsed.Day = int.Parse(dateMatch.Groups[3].Value);
+            var year = int.Parse(dateMatch.Groups[1].Value);
+            var month = int.Parse(dateMatch.Groups[2].Value);
+            var day = int.Parse(dateMatch.Groups[3].Value);
+
+            if (IsValidMonthDay(month, day))
+            {
+                parsed.Year = year;
+                parsed.Month = month;
+                parsed.Day = day;
+            }
+        }
+
+        // Also try DD.MM.YYYY or DD-MM-YYYY (common in European releases)
+        if (!dateMatch.Success)
+        {
+            dateMatch = Regex.Match(title, @"\b(\d{2})[.\-](\d{2})[.\-](20[2-9]\d)\b");
+            if (dateMatch.Success)
+            {
+                var day = int.Parse(dateMatch.Groups[1].Value);
+                var month = int.Parse(dateMatch.Groups[2].Value);
+                var year = int.Parse(dateMatch.Groups[3].Value);
+
+                if (IsValidMonthDay(month, day))
+                {
+                    parsed.Day = day;
+                    parsed.Month = month;
+                    parsed.Year = year;
+                }
+            }
         }
 
         // Detect sport prefix
