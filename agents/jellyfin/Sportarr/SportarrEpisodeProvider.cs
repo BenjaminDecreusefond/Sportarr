@@ -68,7 +68,7 @@ namespace Jellyfin.Plugin.Sportarr
             try
             {
                 var client = _httpClientFactory.CreateClient();
-                var url = $"{ApiUrl}/api/metadata/plex/series/{seriesId}/season/{info.ParentIndexNumber}/episodes";
+                var url = $"{ApiUrl}/api/metadata/agents/series/{seriesId}/season/{info.ParentIndexNumber}/episodes";
 
                 _logger.LogDebug("[Sportarr] Fetching episodes: {Url}", url);
 

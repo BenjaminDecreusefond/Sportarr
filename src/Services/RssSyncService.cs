@@ -300,7 +300,6 @@ public class RssSyncService : BackgroundService
         bool enableMultiPartEpisodes,
         IReadOnlyDictionary<int, int?> earlyReleaseLimits)
     {
-        var releaseTitle = release.Title.ToLowerInvariant();
         Event? bestMatch = null;
         int bestConfidence = int.MinValue;
 
@@ -317,11 +316,19 @@ public class RssSyncService : BackgroundService
 
         foreach (var evt in monitoredEvents)
         {
-            // Quick pre-filter: skip events whose title shares no keywords with the release.
-            var eventKeywords = ExtractKeywords(evt.Title);
-            if (!eventKeywords.Any(kw => releaseTitle.Contains(kw)))
-                continue;
-
+            // No keyword pre-filter. The previous implementation required a
+            // literal word from evt.Title to appear in the release title,
+            // which silently dropped every F1 release: events are titled by
+            // grand-prix name (e.g. "Canadian Grand Prix") while scene
+            // releases name the country (Canada.Race.2160p...). The same
+            // gap hits any sport whose release naming convention diverges
+            // from the event title -- motorsport country names, combat
+            // event numbers vs PPV titles, etc. ValidateRelease already
+            // does its own hard sport/date/year filtering via the
+            // ReleaseMatchingService domain logic (DetectDifferentSport,
+            // year-bounds checks, etc.), with preParsed memoized above,
+            // so per-event validation is cheap enough to skip the brittle
+            // keyword prefilter entirely.
             var matchResult = matchingService.ValidateRelease(release, evt, null, enableMultiPartEpisodes, preParsed,
                 earlyReleaseLimitDays: earlyLimit);
             if (!matchResult.IsMatch || matchResult.IsHardRejection)
@@ -355,29 +362,6 @@ public class RssSyncService : BackgroundService
         }
 
         return bestMatch;
-    }
-
-    /// <summary>
-    /// Extract searchable keywords from event title
-    /// </summary>
-    private List<string> ExtractKeywords(string title)
-    {
-        // Remove common noise words and extract significant terms
-        var normalized = title.ToLowerInvariant();
-
-        // Split on non-alphanumeric characters
-        var words = Regex.Split(normalized, @"[^a-z0-9]+")
-            .Where(w => w.Length >= 2)
-            .Where(w => !IsNoiseWord(w))
-            .ToList();
-
-        return words;
-    }
-
-    private bool IsNoiseWord(string word)
-    {
-        var noiseWords = new HashSet<string> { "the", "vs", "at", "in", "on", "and", "or", "for" };
-        return noiseWords.Contains(word);
     }
 
     /// <summary>

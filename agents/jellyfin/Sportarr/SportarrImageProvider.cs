@@ -83,7 +83,7 @@ namespace Jellyfin.Plugin.Sportarr
                 try
                 {
                     var client = _httpClientFactory.CreateClient();
-                    var url = $"{ApiUrl}/api/metadata/plex/series/{sportarrId}";
+                    var url = $"{ApiUrl}/api/metadata/agents/series/{sportarrId}";
                     var response = await client.GetStringAsync(url, cancellationToken);
                     var json = JsonDocument.Parse(response);
                     var root = json.RootElement;
@@ -144,15 +144,46 @@ namespace Jellyfin.Plugin.Sportarr
             }
             else if (item is Episode episode)
             {
-                // Get episode thumbnail
-                if (!string.IsNullOrEmpty(sportarrId))
+                // Episode thumbnail. The hub no longer exposes a predictable
+                // /api/images/event/{id}/thumb route -- images now live at
+                // fingerprinted /static/images/... paths whose URL is
+                // computed per-image. Resolve via the metadata endpoint
+                // (same pattern the Series branch above uses) which
+                // already returns the fully-qualified thumb_url and any
+                // override the hub admins have set.
+                if (string.IsNullOrEmpty(sportarrId))
                 {
-                    images.Add(new RemoteImageInfo
+                    return images;
+                }
+
+                try
+                {
+                    var client = _httpClientFactory.CreateClient();
+                    var url = $"{ApiUrl}/api/metadata/agents/episode/{sportarrId}";
+                    var response = await client.GetStringAsync(url, cancellationToken);
+                    if (string.IsNullOrEmpty(response))
                     {
-                        Url = $"{ApiUrl}/api/images/event/{sportarrId}/thumb",
-                        Type = ImageType.Primary,
-                        ProviderName = Name
-                    });
+                        _logger.LogWarning("[Sportarr] Empty episode image metadata response for ID: {Id}", sportarrId);
+                        return images;
+                    }
+
+                    var json = JsonDocument.Parse(response);
+                    var root = json.RootElement;
+
+                    if (root.TryGetProperty("thumb_url", out var thumb)
+                        && !string.IsNullOrEmpty(thumb.GetString()))
+                    {
+                        images.Add(new RemoteImageInfo
+                        {
+                            Url = thumb.GetString(),
+                            Type = ImageType.Primary,
+                            ProviderName = Name
+                        });
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "[Sportarr] Error fetching episode image for {Id}", sportarrId);
                 }
             }
 

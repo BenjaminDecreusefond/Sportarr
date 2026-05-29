@@ -33,7 +33,7 @@ class SportarrAgent(Agent.TV_Shows):
         Log.Info("[Sportarr-Legacy] Searching for: %s" % media.show)
 
         try:
-            search_url = "%s/api/metadata/plex/search?title=%s" % (
+            search_url = "%s/api/metadata/agents/search?title=%s" % (
                 SPORTARR_API_URL,
                 String.Quote(media.show, usePlus=True)
             )
@@ -74,7 +74,7 @@ class SportarrAgent(Agent.TV_Shows):
         Log.Info("[Sportarr-Legacy] Updating metadata for ID: %s" % metadata.id)
 
         try:
-            series_url = "%s/api/metadata/plex/series/%s" % (SPORTARR_API_URL, metadata.id)
+            series_url = "%s/api/metadata/agents/series/%s" % (SPORTARR_API_URL, metadata.id)
             Log.Debug("[Sportarr-Legacy] Series URL: %s" % series_url)
             series = JSON.ObjectFromURL(series_url, cacheTime=0)
 
@@ -120,7 +120,7 @@ class SportarrAgent(Agent.TV_Shows):
                     except Exception as e:
                         Log.Warn("[Sportarr-Legacy] Failed to fetch fanart: %s" % e)
 
-            seasons_url = "%s/api/metadata/plex/series/%s/seasons" % (SPORTARR_API_URL, metadata.id)
+            seasons_url = "%s/api/metadata/agents/series/%s/seasons" % (SPORTARR_API_URL, metadata.id)
             Log.Debug("[Sportarr-Legacy] Seasons URL: %s" % seasons_url)
             seasons_response = JSON.ObjectFromURL(seasons_url, cacheTime=0)
 
@@ -149,7 +149,7 @@ class SportarrAgent(Agent.TV_Shows):
         Log.Debug("[Sportarr-Legacy] Updating episodes for season %s" % season_num)
 
         try:
-            episodes_url = "%s/api/metadata/plex/series/%s/season/%s/episodes" % (
+            episodes_url = "%s/api/metadata/agents/series/%s/season/%s/episodes" % (
                 SPORTARR_API_URL, metadata.id, season_num
             )
             Log.Debug("[Sportarr-Legacy] Episodes URL: %s" % episodes_url)

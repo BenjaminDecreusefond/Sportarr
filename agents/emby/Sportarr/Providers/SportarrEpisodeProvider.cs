@@ -109,7 +109,7 @@ namespace Sportarr.Providers
 
             try
             {
-                var url = $"{ApiUrl}/api/metadata/plex/series/{seriesId}/season/{info.ParentIndexNumber}/episodes";
+                var url = $"{ApiUrl}/api/metadata/agents/series/{seriesId}/season/{info.ParentIndexNumber}/episodes";
                 _logger.Debug($"[Sportarr] Fetching episodes: {url}");
 
                 var response = await FetchNoCacheJsonAsync<SportarrEpisodesResponse>(url, cancellationToken);

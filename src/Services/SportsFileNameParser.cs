@@ -462,6 +462,14 @@ public class SportsFileNameParser
     private static readonly Regex YearOnlyPattern = new(@"\b(?<year>20[12]\d)\b", RegexOptions.Compiled);
     // Season span pattern for multi-year seasons like "2025-2026" or "2025-26"
     private static readonly Regex SeasonSpanPattern = new(@"\b(?<startYear>20[12]\d)[\-/](?<endYear>20[12]\d|[12]\d)\b", RegexOptions.Compiled);
+    // Sonarr-style season-episode marker where the year is encoded as the
+    // season number (e.g. "S2026E34"). YearOnlyPattern misses this because
+    // the surrounding 'S' and 'E' are word characters, so the \b boundary
+    // never fires. Sports releases use this format heavily -- F1 races,
+    // motorsport seasons, every sport that maps year -> season number --
+    // and without pulling the year out, match confidence caps below the
+    // threshold and RSS sync silently drops the release.
+    private static readonly Regex SeasonEpisodeYearPattern = new(@"[Ss](?<year>20[12]\d)[Ee]\d+", RegexOptions.Compiled);
 
     public SportsFileNameParser(ILogger<SportsFileNameParser> logger)
     {
@@ -587,8 +595,23 @@ public class SportsFileNameParser
                 }
                 else
                 {
-                    _logger.LogDebug("[SportsFileNameParser] No date/year found in '{Filename}' (cleanName: '{CleanName}')",
-                        filename, cleanName);
+                    // Fallback: try the Sonarr-style SyyyyExx marker. Scene
+                    // releases for sports frequently encode the year as the
+                    // season number (Formula1.S2026E34, NBA.S2025E14, etc.)
+                    // and YearOnlyPattern misses it because the surrounding
+                    // S/E are word characters that suppress the \b boundary.
+                    var seMatch = SeasonEpisodeYearPattern.Match(cleanName);
+                    if (seMatch.Success && int.TryParse(seMatch.Groups["year"].Value, out var seYear))
+                    {
+                        result.EventYear = seYear;
+                        _logger.LogDebug("[SportsFileNameParser] Extracted year {Year} from SxxxxExx marker in '{Filename}'",
+                            seYear, filename);
+                    }
+                    else
+                    {
+                        _logger.LogDebug("[SportsFileNameParser] No date/year found in '{Filename}' (cleanName: '{CleanName}')",
+                            filename, cleanName);
+                    }
                 }
             }
         }

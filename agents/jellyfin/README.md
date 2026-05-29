@@ -188,11 +188,12 @@ The plugin communicates with these Sportarr API endpoints:
 | Endpoint | Purpose |
 |----------|---------|
 | `/api/health` | Connection test |
-| `/api/metadata/plex/search` | Search for leagues |
-| `/api/metadata/plex/series/{id}` | Get league metadata |
-| `/api/metadata/plex/series/{id}/season/{num}/episodes` | Get events |
-| `/api/images/league/{id}/poster` | League poster |
-| `/api/images/event/{id}/thumb` | Event thumbnail |
+| `/api/metadata/agents/search` | Search for leagues |
+| `/api/metadata/agents/series/{id}` | Get league metadata |
+| `/api/metadata/agents/series/{id}/season/{num}/episodes` | Get events |
+| `/api/metadata/agents/episode/{id}` | Get event metadata (incl. resolved thumb_url) |
+
+These endpoints are media-server agnostic and shared with the Plex and Emby agents. The hub also keeps legacy `/api/metadata/plex/*` aliases (hidden from OpenAPI) for older agent versions; new code should use `/agents/*`.
 
 ## Support
 

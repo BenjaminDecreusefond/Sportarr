@@ -944,6 +944,34 @@ public class LeagueEventSyncService
                 }
             }
 
+            // Realign any not-yet-started recording to the current event
+            // time, regardless of whether this sync was the one that
+            // changed the time. The invariant is ScheduledStart ==
+            // EventDate; we check on every sync so a recording that
+            // drifted in a previous build (e.g. an earlier sync corrected
+            // EventDate but didn't update the recording row) gets
+            // repaired the next time the league refreshes. The shift
+            // preserves the original duration (ScheduledEnd - ScheduledStart)
+            // and the user's PrePadding / PostPadding exactly. Only rows
+            // in Scheduled status are touched, never live or historical.
+            var scheduledRecordings = await _db.DvrRecordings
+                .Where(r => r.EventId == existingEvent.Id
+                            && r.Status == DvrRecordingStatus.Scheduled)
+                .ToListAsync();
+            foreach (var rec in scheduledRecordings)
+            {
+                if (rec.ScheduledStart == existingEvent.EventDate)
+                {
+                    continue;
+                }
+                var drift = existingEvent.EventDate - rec.ScheduledStart;
+                rec.ScheduledStart = existingEvent.EventDate;
+                rec.ScheduledEnd += drift;
+                _logger.LogInformation(
+                    "[League Event Sync] Realigned scheduled recording {RecordingId} for '{EventTitle}' to event time (drift was {Drift})",
+                    rec.Id, apiEvent.Title, drift);
+            }
+
             // Broadcast date (separate from EventDate UTC). Backfills existing
             // events that pre-date this column and keeps it current on re-sync.
             // A BroadcastDate change means an admin retuned the league's

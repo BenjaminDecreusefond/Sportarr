@@ -67,6 +67,22 @@ This is a separate plugin built specifically for Emby. Key differences:
 - Check Emby logs for `[Sportarr]` entries
 - Ensure your folder naming matches the league/event names
 
+## Endpoints Used
+
+The Emby agent calls the hub's media-server-agent metadata API. The
+endpoints below are media-server agnostic — the Plex and Jellyfin
+plugins consume the same JSON.
+
+| Endpoint | Purpose |
+|----------|---------|
+| `/api/health` | Connection test |
+| `/api/metadata/agents/search` | Search for leagues |
+| `/api/metadata/agents/series/{id}` | Get league metadata |
+| `/api/metadata/agents/series/{id}/season/{num}/episodes` | Get events |
+| `/api/metadata/agents/episode/{id}` | Get event metadata (incl. resolved thumb_url) |
+
+The hub also keeps legacy `/api/metadata/plex/*` aliases (hidden from OpenAPI) for older agent versions; new code should use `/agents/*`.
+
 ## License
 
 Same license as Sportarr main project.

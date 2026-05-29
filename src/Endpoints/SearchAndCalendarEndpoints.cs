@@ -459,6 +459,12 @@ app.MapGet("/api/calendar.ics", async (
             calEvent.Categories = new List<string> { evt.Sport };
 
         // Date/Time
+        // EventDate is always stored as a UTC clock-time after the
+        // EventDateConverter parse (AdjustToUniversal + AssumeUniversal),
+        // but SQLite strips DateTimeKind on persistence so the value
+        // loaded back is Kind=Unspecified with the correct UTC numbers.
+        // Force Kind=Utc before handing it to Ical.Net so the
+        // serializer emits ...Z without any local-tz adjustment.
         // IMPORTANT: Explicitly set HasTime=true on timed events. When EventDate is midnight UTC
         // (TheSportsDB didn't provide a start time), Ical.Net may default HasTime=false and
         // serialize as VALUE=DATE which calendar apps render as "All Day" instead of timed.
@@ -470,11 +476,12 @@ app.MapGet("/api/calendar.ics", async (
         }
         else
         {
-            var dtStart = new Ical.Net.DataTypes.CalDateTime(evt.EventDate, "UTC");
+            var startUtc = DateTime.SpecifyKind(evt.EventDate, DateTimeKind.Utc);
+            var dtStart = new Ical.Net.DataTypes.CalDateTime(startUtc, "UTC");
             dtStart.HasTime = true;
             calEvent.DtStart = dtStart;
             // Assume ~3h event duration (typical for most sports)
-            var dtEnd = new Ical.Net.DataTypes.CalDateTime(evt.EventDate.AddHours(3), "UTC");
+            var dtEnd = new Ical.Net.DataTypes.CalDateTime(startUtc.AddHours(3), "UTC");
             dtEnd.HasTime = true;
             calEvent.DtEnd = dtEnd;
         }

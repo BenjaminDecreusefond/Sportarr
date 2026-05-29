@@ -126,7 +126,7 @@ namespace Sportarr.Providers
 
                 try
                 {
-                    var url = $"{ApiUrl}/api/metadata/plex/series/{sportarrId}";
+                    var url = $"{ApiUrl}/api/metadata/agents/series/{sportarrId}";
                     var seriesData = await _httpClient.GetFromJsonAsync<SportarrSeries>(url, cancellationToken);
 
                     if (seriesData != null)
@@ -188,15 +188,36 @@ namespace Sportarr.Providers
             }
             else if (item is Episode episode)
             {
-                // Get episode thumbnail
-                if (!string.IsNullOrEmpty(sportarrId))
+                // Episode thumbnail. The hub no longer exposes a predictable
+                // /api/images/event/{id}/thumb route -- images now live at
+                // fingerprinted /static/images/... paths whose URL is
+                // computed per-image. Resolve via the metadata endpoint
+                // (same pattern the Series branch above uses) which
+                // already returns the fully-qualified thumb_url and any
+                // override the hub admins have set.
+                if (string.IsNullOrEmpty(sportarrId))
                 {
-                    images.Add(new RemoteImageInfo
+                    return images;
+                }
+
+                try
+                {
+                    var url = $"{ApiUrl}/api/metadata/agents/episode/{sportarrId}";
+                    var episodeData = await _httpClient.GetFromJsonAsync<SportarrEpisode>(url, cancellationToken);
+
+                    if (episodeData != null && !string.IsNullOrEmpty(episodeData.ThumbUrl))
                     {
-                        Url = $"{ApiUrl}/api/images/event/{sportarrId}/thumb",
-                        Type = ImageType.Primary,
-                        ProviderName = Name
-                    });
+                        images.Add(new RemoteImageInfo
+                        {
+                            Url = episodeData.ThumbUrl,
+                            Type = ImageType.Primary,
+                            ProviderName = Name
+                        });
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.Error($"[Sportarr] Error fetching episode image for {sportarrId} --> {ex.Message}");
                 }
             }
 

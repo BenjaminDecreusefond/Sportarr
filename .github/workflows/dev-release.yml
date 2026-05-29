@@ -37,7 +37,9 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: |
+            8.0.x
+            9.0.x
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -100,6 +102,67 @@ jobs:
           dotnet publish src/Sportarr.csproj -c Release -r osx-arm64 --self-contained true -p:PublishSingleFile=true -p:SkipFrontendBuild=true -p:Version=${{ steps.version.outputs.version }} -o publish/osx-arm64
           cd publish/osx-arm64 && tar -czvf ../../Sportarr-osx-arm64-${{ steps.version.outputs.version }}.tar.gz .
 
+      # Plugin builds (Jellyfin / Emby / Plex Legacy) mirror what the stable
+      # release workflow does so dev testers can grab a matching plugin
+      # without waiting for a main cut. The dev plugins are attached to the
+      # rolling "Development Build" GitHub Release as direct-download zips.
+      # We deliberately do NOT update agents/jellyfin/manifest.json the way
+      # the stable workflow does -- that file is the public Jellyfin plugin
+      # catalog and pointing it at dev zips would silently push prereleases
+      # to every stable user's auto-update path.
+      #
+      # AssemblyVersion / FileVersion must be 4-part numeric (Major.Minor.Build.Revision),
+      # so we derive a numeric version (base + GitHub run number) for those
+      # fields and use the dev-suffixed version for the zip filename and the
+      # meta.json that ships inside the package.
+      - name: Build Jellyfin Plugin (dev)
+        run: |
+          BASE_VERSION=$(grep 'AppVersion =' src/Version.cs | sed 's/.*"\(.*\)".*/\1/')
+          NUMERIC_VERSION="${BASE_VERSION}.${{ github.run_number }}"
+          DEV_VERSION="${{ steps.version.outputs.version }}"
+          cd agents/jellyfin/Sportarr
+          sed -i "s|<Version>.*</Version>|<Version>${BASE_VERSION}</Version>|" Sportarr.csproj
+          sed -i "s|<AssemblyVersion>.*</AssemblyVersion>|<AssemblyVersion>${NUMERIC_VERSION}</AssemblyVersion>|" Sportarr.csproj
+          sed -i "s|<FileVersion>.*</FileVersion>|<FileVersion>${NUMERIC_VERSION}</FileVersion>|" Sportarr.csproj
+          python3 -c "
+          import json
+          with open('meta.json', 'r') as f:
+            meta = json.load(f)
+          meta['version'] = '${DEV_VERSION}'
+          meta['timestamp'] = '$(date -u +%Y-%m-%dT%H:%M:%SZ)'
+          with open('meta.json', 'w') as f:
+            json.dump(meta, f, indent=2)
+            f.write('\n')
+          "
+          dotnet restore Sportarr.csproj
+          dotnet publish Sportarr.csproj -c Release -o publish
+          cd publish
+          zip -j ../sportarr-jellyfin-plugin_${DEV_VERSION}.zip Jellyfin.Plugin.Sportarr.dll meta.json
+          cd ..
+          mv sportarr-jellyfin-plugin_${DEV_VERSION}.zip ../../../
+
+      - name: Build Emby Plugin (dev)
+        run: |
+          BASE_VERSION=$(grep 'AppVersion =' src/Version.cs | sed 's/.*"\(.*\)".*/\1/')
+          NUMERIC_VERSION="${BASE_VERSION}.${{ github.run_number }}"
+          DEV_VERSION="${{ steps.version.outputs.version }}"
+          cd agents/emby/Sportarr
+          sed -i "s|<Version>.*</Version>|<Version>${BASE_VERSION}</Version>|" Sportarr.csproj
+          sed -i "s|<AssemblyVersion>.*</AssemblyVersion>|<AssemblyVersion>${NUMERIC_VERSION}</AssemblyVersion>|" Sportarr.csproj
+          sed -i "s|<FileVersion>.*</FileVersion>|<FileVersion>${NUMERIC_VERSION}</FileVersion>|" Sportarr.csproj
+          dotnet restore Sportarr.csproj
+          dotnet publish Sportarr.csproj -c Release -o publish
+          cd publish
+          zip -j ../sportarr-emby-plugin_${DEV_VERSION}.zip Emby.Plugins.Sportarr.dll
+          cd ..
+          mv sportarr-emby-plugin_${DEV_VERSION}.zip ../../../
+
+      - name: Build Plex Legacy Bundle (dev)
+        run: |
+          DEV_VERSION="${{ steps.version.outputs.version }}"
+          cd agents/plex
+          zip -r ../../sportarr-plex-legacy-plugin_${DEV_VERSION}.zip Sportarr-Legacy.bundle
+
       # GitHub caps a single release at 1000 assets. The dev "Development
       # Build" release is auto-overwritten on every push, so over time we
       # accumulate artifact uploads until softprops/action-gh-release fails
@@ -112,6 +175,21 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         continue-on-error: true
+
+      # The git `dev` tag has to track the dev branch so the Releases
+      # page, downstream tooling, and any local clone (IDEs computing
+      # tag-vs-branch diffs included) all see the rolling tag at the
+      # current commit. softprops/action-gh-release attaches the
+      # release to whatever commit the tag currently points at and
+      # ignores target_commitish when the tag already exists, so we
+      # force-move the tag here before softprops runs. Force-pushing a
+      # lightweight tag is safe: no commits get orphaned, and the
+      # GitHub Release body / assets are recreated on every workflow
+      # run regardless.
+      - name: Move dev tag to current commit
+        run: |
+          git tag -f dev "${GITHUB_SHA}"
+          git push origin refs/tags/dev --force
 
       - name: Update dev prerelease
         uses: softprops/action-gh-release@v2
@@ -137,6 +215,11 @@ jobs:
             - **Linux ARM64**: Sportarr-linux-arm64-${{ steps.version.outputs.version }}.tar.gz
             - **macOS x64**: Sportarr-osx-x64-${{ steps.version.outputs.version }}.tar.gz
             - **macOS ARM64**: Sportarr-osx-arm64-${{ steps.version.outputs.version }}.tar.gz
+
+            ### Media-server plugins (manual install only; not in the public catalog)
+            - **Jellyfin**: sportarr-jellyfin-plugin_${{ steps.version.outputs.version }}.zip
+            - **Emby**: sportarr-emby-plugin_${{ steps.version.outputs.version }}.zip
+            - **Plex (legacy bundle)**: sportarr-plex-legacy-plugin_${{ steps.version.outputs.version }}.zip
           draft: false
           prerelease: true
           files: |
@@ -145,6 +228,9 @@ jobs:
             Sportarr-linux-arm64-${{ steps.version.outputs.version }}.tar.gz
             Sportarr-osx-x64-${{ steps.version.outputs.version }}.tar.gz
             Sportarr-osx-arm64-${{ steps.version.outputs.version }}.tar.gz
+            sportarr-jellyfin-plugin_${{ steps.version.outputs.version }}.zip
+            sportarr-emby-plugin_${{ steps.version.outputs.version }}.zip
+            sportarr-plex-legacy-plugin_${{ steps.version.outputs.version }}.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
