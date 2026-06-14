@@ -1,6 +1,6 @@
 import { Fragment } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
-import { ArrowPathIcon, ClockIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
+import { ArrowPathIcon, ClockIcon, ExclamationTriangleIcon, InformationCircleIcon } from '@heroicons/react/24/outline';
 
 export type RefreshScope = 'current' | 'full';
 
@@ -75,6 +75,19 @@ export default function RefreshScopeModal({
                         Pick how to sync this league with the Sportarr API.
                       </p>
                     </div>
+                  </div>
+
+                  {/* First-sync expectation note: the first Quick Sync after a
+                      Sportarr update runs a one-time full reconciliation (event-id
+                      migration + history), which is far heavier than the usual
+                      delta. Without this, users update, hit Quick Sync, and think
+                      it has frozen when it's actually doing the one-time pass. */}
+                  <div className="mb-4 flex items-start gap-2 rounded-lg border border-blue-900/40 bg-blue-950/30 p-3">
+                    <InformationCircleIcon className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
+                    <p className="text-xs text-gray-300">
+                      <span className="font-semibold text-blue-300">First sync after an update?</span>{' '}
+                      The first Quick Sync reconciles your whole library once (migrating event IDs and history) and can take several minutes on large libraries. Let it finish - every sync after that is near-instant.
+                    </p>
                   </div>
 
                   <div className="flex flex-col gap-3">
